@@ -1,0 +1,168 @@
+-- Muscle Legends Auto Farm & Kill All GUI Script
+-- สคริปต์สำหรับ Roblox - Muscle Legends
+
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local Window = Rayfield:CreateWindow({
+   Name = "Muscle Legends | Premium Hub",
+   LoadingTitle = "กำลังโหลดสคริปต์...",
+   LoadingSubtitle = "by Roblox Assistant",
+   ConfigurationSaving = {
+      Enabled = true,
+      FolderName = "MuscleLegendsConfig",
+      FileName = "BigHub"
+   },
+   Discord = {
+      Enabled = false,
+      Invite = "noinvitelink",
+      RememberJoins = true
+   },
+   KeySystem = false
+})
+
+-- Variables & Toggles
+local AutoTrain = false
+local AutoRock = false
+local AutoRebirth = false
+local KillAll = false
+
+-- Player Variables
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+-- Function: Punch Action
+local function DoPunch()
+    local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
+    if tool then
+        tool:Activate()
+    else
+        -- ถ้าไม่ได้ถือ นำ Weight/Punch ออกมาถือ
+        local backpackTool = LocalPlayer.Backpack:FindFirstChild("Punch") or LocalPlayer.Backpack:FindFirstChildOfClass("Tool")
+        if backpackTool and LocalPlayer.Character:FindFirstChild("Humanoid") then
+            LocalPlayer.Character.Humanoid:EquipTool(backpackTool)
+        end
+    end
+end
+
+-- Tabs
+local FarmTab = Window:CreateTab("Auto Farm", 4483362458) -- Icon ID
+local CombatTab = Window:CreateTab("Combat / Kill All", 4483362458)
+
+-- 1. Auto Train (ยกกล้าม)
+FarmTab:CreateToggle({
+   Name = "Auto Train (ยกกล้าม / ต่อยลม)",
+   CurrentValue = false,
+   Flag = "AutoTrainFlag",
+   Callback = function(Value)
+      AutoTrain = Value
+      task.spawn(function()
+         while AutoTrain do
+            DoPunch()
+            task.wait(0.1)
+         end
+      end)
+   end,
+})
+
+-- 2. Auto Green Rock (ต่อยหินสีเขียว อยู่กับที่)
+FarmTab:CreateToggle({
+   Name = "Auto Punch Green Rock (ต่อยหินเขียว - ยืนอยู่กับที่)",
+   CurrentValue = false,
+   Flag = "AutoRockFlag",
+   Callback = function(Value)
+      AutoRock = Value
+      task.spawn(function()
+         while AutoRock do
+            -- ค้นหาหินสีเขียวในเกม (Rock / Tiny Rock)
+            local machines = workspace:FindFirstChild("Machines") or workspace
+            local targetRock = nil
+            
+            for _, obj in pairs(machines:GetChildren()) do
+               if obj.Name:find("Rock") or obj.Name:find("Tiny Rock") then
+                   targetRock = obj
+                   break
+               end
+            end
+            
+            if targetRock then
+                -- ส่งสัญญาณการต่อยไปที่ตำแหน่งหินโดยที่ตัวไม่ต้องเดินไป
+                local punchTool = LocalPlayer.Character:FindFirstChild("Punch") or LocalPlayer.Backpack:FindFirstChild("Punch")
+                if punchTool then
+                   if LocalPlayer.Backpack:FindFirstChild("Punch") then
+                       LocalPlayer.Character.Humanoid:EquipTool(punchTool)
+                   end
+                   -- ยิง Remote Event ทำความเสียหายหิน
+                   pcall(function()
+                      ReplicatedStorage.rEvents.punchEvent:FireServer("punchRight")
+                      ReplicatedStorage.rEvents.punchEvent:FireServer("punchLeft")
+                   end)
+                end
+            end
+            task.wait(0.05)
+         end
+      end)
+   end,
+})
+
+-- 3. Auto Rebirth (รีเบิร์ธอัตโนมัติ)
+FarmTab:CreateToggle({
+   Name = "Auto Rebirth (รีเบิร์ธอัตโนมัติ)",
+   CurrentValue = false,
+   Flag = "AutoRebirthFlag",
+   Callback = function(Value)
+      AutoRebirth = Value
+      task.spawn(function()
+         while AutoRebirth do
+            pcall(function()
+               ReplicatedStorage.rEvents.rebirthEvent:FireServer("rebirthRequest")
+            end)
+            task.wait(1)
+         end
+      end)
+   end,
+})
+
+-- 4. Kill All (ต่อยคนทุกคน)
+CombatTab:CreateToggle({
+   Name = "Kill All (ต่อยทุกคนในเซิร์ฟเวอร์)",
+   CurrentValue = false,
+   Flag = "KillAllFlag",
+   Callback = function(Value)
+      KillAll = Value
+      task.spawn(function()
+         while KillAll do
+            for _, targetPlayer in pairs(Players:GetPlayers()) do
+               if targetPlayer ~= LocalPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                  -- วาร์ปหมัด/ต่อยผู้เล่นทุกคน
+                  pcall(function()
+                     local punchTool = LocalPlayer.Character:FindFirstChild("Punch") or LocalPlayer.Backpack:FindFirstChild("Punch")
+                     if punchTool then
+                        if LocalPlayer.Backpack:FindFirstChild("Punch") then
+                            LocalPlayer.Character.Humanoid:EquipTool(punchTool)
+                        end
+                        -- ส่ง Event ต่อยไปยังทิศทางของศัตรู
+                        ReplicatedStorage.rEvents.punchEvent:FireServer("punchRight")
+                        ReplicatedStorage.rEvents.punchEvent:FireServer("punchLeft")
+                        
+                        -- Fire Hit Remote ถ้ามี
+                        if ReplicatedStorage.rEvents:FindFirstChild("hitEvent") then
+                            ReplicatedStorage.rEvents.hitEvent:FireServer(targetPlayer.Character.HumanoidRootPart)
+                        end
+                     end
+                  end)
+               end
+            end
+            task.wait(0.1)
+         end
+      end)
+   end,
+})
+
+Rayfield:Notify({
+   Title = "เปิดใช้งานสคริปต์สำเร็จ!",
+   Content = "ขอให้สนุกกับการฟาร์ม Muscle Legends",
+   Duration = 5,
+   Image = 4483362458,
+})
+
