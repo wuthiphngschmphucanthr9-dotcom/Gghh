@@ -1,0 +1,352 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local CoreGui = game:GetService("CoreGui")
+
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+-- Local State
+local SelectedPlayerName = ""
+local TargetTeleportEnabled = false
+local AutoLockEnabled = false
+local DistanceBehind = 3
+
+local TeleportConnection = nil
+local LockConnection = nil
+
+-- ลบ UIเก่า ถ้ามีการรันซ้ำ
+if CoreGui:FindFirstChild("UI_848_Target") then
+    CoreGui.UI_848_Target:Destroy()
+end
+
+-- สร้าง ScreenGui
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "UI_848_Target"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = (gethui and gethui()) or CoreGui or LocalPlayer:WaitForChild("PlayerGui")
+
+-- หน้าต่างหลัก (ขนาดเล็ก)
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 230, 0, 280)
+MainFrame.Position = UDim2.new(0.05, 0, 0.25, 0)
+MainFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
+MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.Parent = ScreenGui
+
+local MainCorner = Instance.new("UICorner")
+MainCorner.CornerRadius = UDim.new(0, 10)
+MainCorner.Parent = MainFrame
+
+-- เส้นขอบสีรุ้ง
+local MainStroke = Instance.new("UIStroke")
+MainStroke.Thickness = 2
+MainStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+MainStroke.Parent = MainFrame
+
+-- หัวข้อหลัก "848"
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Name = "TitleLabel"
+TitleLabel.Size = UDim2.new(1, -50, 0, 30)
+TitleLabel.Position = UDim2.new(0, 10, 0, 5)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Text = "848"
+TitleLabel.Font = Enum.Font.FredokaOne
+TitleLabel.TextSize = 22
+TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+TitleLabel.Parent = MainFrame
+
+-- ปุ่มย่อ / ขยาย UI
+local MinimizeBtn = Instance.new("TextButton")
+MinimizeBtn.Name = "MinimizeBtn"
+MinimizeBtn.Size = UDim2.new(0, 26, 0, 26)
+MinimizeBtn.Position = UDim2.new(1, -32, 0, 7)
+MinimizeBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+MinimizeBtn.Text = "-"
+MinimizeBtn.Font = Enum.Font.SourceSansBold
+MinimizeBtn.TextSize = 20
+MinimizeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+MinimizeBtn.Parent = MainFrame
+
+local MinCorner = Instance.new("UICorner")
+MinCorner.CornerRadius = UDim.new(0, 6)
+MinCorner.Parent = MinimizeBtn
+
+-- ปุ่มเปิด UI ขนาดเล็ก (แสดงเมื่อย่อ)
+local OpenBtn = Instance.new("TextButton")
+OpenBtn.Name = "OpenBtn"
+OpenBtn.Size = UDim2.new(0, 50, 0, 30)
+OpenBtn.Position = UDim2.new(0.02, 0, 0.2, 0)
+OpenBtn.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
+OpenBtn.Text = "848"
+OpenBtn.Font = Enum.Font.FredokaOne
+OpenBtn.TextSize = 16
+OpenBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+OpenBtn.Visible = false
+OpenBtn.Active = true
+OpenBtn.Draggable = true
+OpenBtn.Parent = ScreenGui
+
+local OpenCorner = Instance.new("UICorner")
+OpenCorner.CornerRadius = UDim.new(0, 8)
+OpenCorner.Parent = OpenBtn
+
+local OpenStroke = Instance.new("UIStroke")
+OpenStroke.Thickness = 2
+OpenStroke.Parent = OpenBtn
+
+-- สลับการ ย่อ/ขยาย
+local isMinimized = false
+MinimizeBtn.MouseButton1Click:Connect(function()
+    isMinimized = true
+    MainFrame.Visible = false
+    OpenBtn.Visible = true
+end)
+
+OpenBtn.MouseButton1Click:Connect(function()
+    isMinimized = false
+    MainFrame.Visible = true
+    OpenBtn.Visible = false
+end)
+
+-- เอฟเฟกต์สีรุ้ง (Rainbow Effect)
+task.spawn(function()
+    local hue = 0
+    while true do
+        hue = (hue + 0.005) % 1
+        local rainbowColor = Color3.fromHSV(hue, 0.8, 1)
+        TitleLabel.TextColor3 = rainbowColor
+        MainStroke.Color = rainbowColor
+        OpenStroke.Color = rainbowColor
+        OpenBtn.TextColor3 = rainbowColor
+        task.wait(0.03)
+    end
+end)
+
+-- ข้อความบอกสถานะ
+local StatusLabel = Instance.new("TextLabel")
+StatusLabel.Name = "StatusLabel"
+StatusLabel.Size = UDim2.new(1, -20, 0, 18)
+StatusLabel.Position = UDim2.new(0, 10, 0, 32)
+StatusLabel.BackgroundTransparency = 1
+StatusLabel.Text = "สถานะ: ยังไม่ได้เลือกใคร"
+StatusLabel.Font = Enum.Font.SourceSansBold
+StatusLabel.TextSize = 13
+StatusLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
+StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+StatusLabel.Parent = MainFrame
+
+-- พื้นที่ใส่ปุ่มเมนู
+local Container = Instance.new("Frame")
+Container.Size = UDim2.new(1, -16, 1, -60)
+Container.Position = UDim2.new(0, 8, 0, 52)
+Container.BackgroundTransparency = 1
+Container.Parent = MainFrame
+
+local UIListLayout = Instance.new("UIListLayout")
+UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+UIListLayout.Padding = UDim.new(0, 6)
+UIListLayout.Parent = Container
+
+-- ฟังก์ชันสร้างปุ่มเมนู
+local function CreateButton(text)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, 0, 0, 32)
+    btn.BackgroundColor3 = Color3.fromRGB(28, 30, 38)
+    btn.Text = text
+    btn.Font = Enum.Font.SourceSansBold
+    btn.TextSize = 13
+    btn.TextColor3 = Color3.fromRGB(240, 240, 240)
+    btn.Parent = Container
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 6)
+    corner.Parent = btn
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Thickness = 1
+    stroke.Color = Color3.fromRGB(50, 52, 65)
+    stroke.Parent = btn
+
+    return btn, stroke
+end
+
+-- 1. ปุ่มเลือกผู้เล่น
+local SelectBtn, _ = CreateButton("เลือกผู้เล่น: [กดเพื่อเปลี่ยน]")
+local PlayersList = {}
+local CurrentIdx = 0
+
+local function RefreshPlayers()
+    PlayersList = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer then
+            table.insert(PlayersList, p.Name)
+        end
+    end
+end
+
+SelectBtn.MouseButton1Click:Connect(function()
+    RefreshPlayers()
+    if #PlayersList == 0 then
+        SelectedPlayerName = ""
+        SelectBtn.Text = "เลือกผู้เล่น: ไม่พบใครในห้อง"
+        StatusLabel.Text = "สถานะ: ไม่มีคนอื่นในเซิร์ฟ"
+        StatusLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
+        return
+    end
+
+    CurrentIdx = CurrentIdx + 1
+    if CurrentIdx > #PlayersList then CurrentIdx = 1 end
+
+    SelectedPlayerName = PlayersList[CurrentIdx]
+    SelectBtn.Text = "เป้าหมาย: " .. SelectedPlayerName
+    StatusLabel.Text = "สถานะ: เลือก " .. SelectedPlayerName แล้ว
+    StatusLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
+end)
+
+-- 2. ปุ่มเปิด/ปิด วาร์ปติดหลัง
+local TeleportBtn, TeleportStroke = CreateButton("วาร์ปติดหลัง: ปิด")
+
+local function StartTeleportLoop()
+    if TeleportConnection then TeleportConnection:Disconnect() end
+    
+    TeleportConnection = RunService.Heartbeat:Connect(function()
+        if not TargetTeleportEnabled then return end
+        if SelectedPlayerName == "" then return end
+
+        local targetPlayer = Players:FindFirstChild(SelectedPlayerName)
+        
+        -- ถ้าเป้าหมายไม่อยู่ในห้อง (กดออกจากเกม)
+        if not targetPlayer then
+            TargetTeleportEnabled = false
+            TeleportBtn.Text = "วาร์ปติดหลัง: ปิด"
+            TeleportBtn.BackgroundColor3 = Color3.fromRGB(28, 30, 38)
+            TeleportStroke.Color = Color3.fromRGB(50, 52, 65)
+            StatusLabel.Text = "สถานะ: เป้าหมายออกจากเกมแล้ว"
+            StatusLabel.TextColor3 = Color3.fromRGB(255, 80, 80)
+            if TeleportConnection then
+                TeleportConnection:Disconnect()
+                TeleportConnection = nil
+            end
+            return
+        end
+
+        local targetChar = targetPlayer.Character
+        local myChar = LocalPlayer.Character
+
+        if targetChar and myChar and targetChar:FindFirstChild("HumanoidRootPart") and myChar:FindFirstChild("HumanoidRootPart") then
+            local targetHrp = targetChar.HumanoidRootPart
+            local myHrp = myChar.HumanoidRootPart
+            local targetHum = targetChar:FindFirstChildOfClass("Humanoid")
+            local myHum = myChar:FindFirstChildOfClass("Humanoid")
+
+            -- ถ้าเป้าหมายยังมีชีวิตอยู่
+            if targetHum and targetHum.Health > 0 and myHum and myHum.Health > 0 then
+                StatusLabel.Text = "สถานะ: กำลังติดหลัง " .. SelectedPlayerName
+                StatusLabel.TextColor3 = Color3.fromRGB(0, 255, 180)
+
+                -- คำนวณตำแหน่งไปอยู่ข้างหลัง
+                local behindCFrame = targetHrp.CFrame * CFrame.new(0, 0, DistanceBehind)
+                myHrp.CFrame = CFrame.new(behindCFrame.Position, targetHrp.Position + targetHrp.CFrame.LookVector * 10)
+            else
+                -- ถ้าเป้าหมายตาย หรือเราตาย ให้รอเกิดใหม่แล้วไปวาร์ปต่อ
+                StatusLabel.Text = "สถานะ: รอเกิดใหม่..."
+                StatusLabel.TextColor3 = Color3.fromRGB(255, 200, 0)
+            end
+        else
+            StatusLabel.Text = "สถานะ: กำลังโหลดตัวละคร..."
+            StatusLabel.TextColor3 = Color3.fromRGB(255, 200, 0)
+        end
+    end)
+end
+
+TeleportBtn.MouseButton1Click:Connect(function()
+    if SelectedPlayerName == "" then
+        StatusLabel.Text = "สถานะ: โปรดเลือกผู้เล่นก่อน!"
+        StatusLabel.TextColor3 = Color3.fromRGB(255, 80, 80)
+        return
+    end
+
+    TargetTeleportEnabled = not TargetTeleportEnabled
+
+    if TargetTeleportEnabled then
+        TeleportBtn.Text = "วาร์ปติดหลัง: เปิด"
+        TeleportBtn.BackgroundColor3 = Color3.fromRGB(0, 140, 90)
+        TeleportStroke.Color = Color3.fromRGB(0, 255, 150)
+        StartTeleportLoop()
+    else
+        TeleportBtn.Text = "วาร์ปติดหลัง: ปิด"
+        TeleportBtn.BackgroundColor3 = Color3.fromRGB(28, 30, 38)
+        TeleportStroke.Color = Color3.fromRGB(50, 52, 65)
+        StatusLabel.Text = "สถานะ: ปิดการวาร์ป"
+        StatusLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
+        if TeleportConnection then
+            TeleportConnection:Disconnect()
+            TeleportConnection = nil
+        end
+    end
+end)
+
+-- 3. ปุ่มเปิด/ปิด ล็อกกล้อง
+local LockBtn, LockStroke = CreateButton("ล็อกกล้อง: ปิด")
+
+LockBtn.MouseButton1Click:Connect(function()
+    AutoLockEnabled = not AutoLockEnabled
+
+    if AutoLockEnabled then
+        LockBtn.Text = "ล็อกกล้อง: เปิด"
+        LockBtn.BackgroundColor3 = Color3.fromRGB(130, 0, 140)
+        LockStroke.Color = Color3.fromRGB(220, 0, 255)
+
+        LockConnection = RunService.RenderStepped:Connect(function()
+            if SelectedPlayerName ~= "" then
+                local targetPlayer = Players:FindFirstChild(SelectedPlayerName)
+                if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                    local targetHrp = targetPlayer.Character.HumanoidRootPart
+                    Camera.CFrame = CFrame.new(Camera.CFrame.Position, targetHrp.Position)
+                end
+            end
+        end)
+    else
+        LockBtn.Text = "ล็อกกล้อง: ปิด"
+        LockBtn.BackgroundColor3 = Color3.fromRGB(28, 30, 38)
+        LockStroke.Color = Color3.fromRGB(50, 52, 65)
+        if LockConnection then
+            LockConnection:Disconnect()
+            LockConnection = nil
+        end
+    end
+end)
+
+-- 4. ปุ่มปรับระยะห่าง
+local DistBtn, _ = CreateButton("ระยะห่าง: " .. tostring(DistanceBehind) .. " ช่อง")
+
+DistBtn.MouseButton1Click:Connect(function()
+    DistanceBehind = DistanceBehind + 1
+    if DistanceBehind > 8 then
+        DistanceBehind = 1
+    end
+    DistBtn.Text = "ระยะห่าง: " .. tostring(DistanceBehind) .. " ช่อง"
+end)
+
+-- แจ้งเตือนเมื่อเป้าหมายออกจากเกม
+Players.PlayerRemoving:Connect(function(player)
+    if player.Name == SelectedPlayerName then
+        SelectedPlayerName = ""
+        TargetTeleportEnabled = false
+        TeleportBtn.Text = "วาร์ปติดหลัง: ปิด"
+        TeleportBtn.BackgroundColor3 = Color3.fromRGB(28, 30, 38)
+        TeleportStroke.Color = Color3.fromRGB(50, 52, 65)
+        SelectBtn.Text = "เลือกผู้เล่น: [กดเพื่อเปลี่ยน]"
+        StatusLabel.Text = "สถานะ: เป้าหมายออกจากเกมแล้ว"
+        StatusLabel.TextColor3 = Color3.fromRGB(255, 80, 80)
+        
+        if TeleportConnection then
+            TeleportConnection:Disconnect()
+            TeleportConnection = nil
+        end
+    end
+end)
