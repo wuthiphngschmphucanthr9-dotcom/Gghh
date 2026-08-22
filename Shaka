@@ -1,0 +1,158 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Lighting = game:GetService("Lighting")
+
+local LocalPlayer = Players.LocalPlayer
+local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+
+LocalPlayer.CharacterAdded:Connect(function(newChar)
+    Character = newChar
+end)
+
+-- Helper: ส่งคำสั่งปุ่มกดแบบรองรับทุก Executor
+local function pressKey(keyCode)
+    pcall(function()
+        if keypress then
+            keypress(keyCode.Value)
+            task.wait(0.05)
+            keyrelease(keyCode.Value)
+        elseif game:GetService("VirtualInputManager") then
+            game:GetService("VirtualInputManager"):SendKeyEvent(true, keyCode, false, game)
+            task.wait(0.05)
+            game:GetService("VirtualInputManager"):SendKeyEvent(false, keyCode, false, game)
+        end
+    end)
+end
+
+-- 1. LOW GRAPHICS / FPS BOOST (ภาพกาก เพิ่ม FPS 100%)
+task.spawn(function()
+    pcall(function()
+        Lighting.GlobalShadows = false
+        Lighting.FogEnd = 9e9
+        Lighting.Brightness = 1
+        
+        for _, v in pairs(Lighting:GetChildren()) do
+            if v:IsA("PostEffect") or v:IsA("Atmosphere") or v:IsA("SunRaysEffect") then
+                v.Enabled = false
+            end
+        end
+        
+        local function cleanPart(part)
+            if part:IsA("BasePart") then
+                part.Material = Enum.Material.SmoothPlastic
+                part.Reflectance = 0
+            elseif part:IsA("ParticleEmitter") or part:IsA("Trail") or part:IsA("Smoke") or part:IsA("Fire") or part:IsA("Sparkles") then
+                part.Enabled = false
+            elseif part:IsA("Decal") or part:IsA("Texture") then
+                part:Destroy()
+            end
+        end
+
+        for _, v in pairs(workspace:GetDescendants()) do
+            cleanPart(v)
+        end
+
+        workspace.DescendantAdded:Connect(cleanPart)
+    end)
+end)
+
+-- Variables tracking
+local M1Count = 0
+local LastM1Time = 0
+local IsBlocking = false
+
+-- 2. AUTO BLOCK SYSTEM (ออโต้บล็อกเสถียรขึ้น)
+RunService.Stepped:Connect(function()
+    pcall(function()
+        if not Character or not Character:FindFirstChild("HumanoidRootPart") then return end
+        local hrp = Character.HumanoidRootPart
+        local shouldBlock = false
+
+        for _, enemy in pairs(Players:GetPlayers()) do
+            if enemy ~= LocalPlayer and enemy.Character and enemy.Character:FindFirstChild("HumanoidRootPart") then
+                local eChar = enemy.Character
+                local eHrp = eChar.HumanoidRootPart
+                local dist = (hrp.Position - eHrp.Position).Magnitude
+
+                if dist <= 14 then
+                    -- ตรวจจับ Animation การโจมตีของศัตรู
+                    local hum = eChar:FindFirstChildOfClass("Humanoid")
+                    if hum then
+                        local animator = hum:FindFirstChildOfClass("Animator")
+                        if animator then
+                            for _, track in pairs(animator:GetPlayingAnimationTracks()) do
+                                if track.IsPlaying and (track.Length > 0 and track.TimePosition < track.Length) then
+                                    local animName = track.Name:lower()
+                                    if animName:find("punch") or animName:find("attack") or animName:find("m1") or animName:find("dash") or animName:find("skill") then
+                                        shouldBlock = true
+                                        break
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
+        -- บล็อก / ยกเลิกบล็อก
+        if shouldBlock and not IsBlocking then
+            IsBlocking = true
+            pcall(function()
+                if keypress then keypress(Enum.KeyCode.F.Value) end
+            end)
+        elseif not shouldBlock and IsBlocking then
+            IsBlocking = false
+            pcall(function()
+                if keyrelease then keyrelease(Enum.KeyCode.F.Value) end
+            end)
+        end
+    end)
+end)
+
+-- 3. COMBO TRACKER (ต่อย 3 ที Up Cut + Side Step / ต่อย 4 ที พุ่งทะลวงโล่)
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        local currentTime = tick()
+        
+        if currentTime - LastM1Time > 1.2 then
+            M1Count = 0
+        end
+        
+        M1Count = M1Count + 1
+        LastM1Time = currentTime
+
+        -- [ต่อย 3 ครั้ง -> Up Cut -> Side-step Tech]
+        if M1Count == 3 then
+            task.spawn(function()
+                task.wait(0.15)
+                -- กระโดด Up Cut
+                local hum = Character:FindFirstChildOfClass("Humanoid")
+                if hum then hum.Jump = true end
+                
+                task.wait(0.12)
+                -- Side-step (Q + A / สไลด์ข้าง)
+                pressKey(Enum.KeyCode.Q)
+                pressKey(Enum.KeyCode.A)
+            end)
+        end
+
+        -- [ต่อย 4 ครั้ง -> พุ่งไปข้างหน้าสลายโล่ Guard Break]
+        if M1Count == 4 then
+            task.spawn(function()
+                task.wait(0.1)
+                -- พุ่งไปข้างหน้า (Forward Dash)
+                pressKey(Enum.KeyCode.Q)
+                pressKey(Enum.KeyCode.W)
+                
+                M1Count = 0 -- Reset Combo
+            end)
+        end
+    end
+end)
+
+-- แจ้งเตือนเมื่อสคริปต์ทำงาน
+print("[ Sunday Script ] : Loaded successfully and ready to 
