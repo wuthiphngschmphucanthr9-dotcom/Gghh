@@ -1,0 +1,344 @@
+ ====================================================
+-- Roblox Universal Audio / Sound Logger GUI
+-- คำอธิบาย: ตรวจจับเพลง/เสียงที่ถูกเปิดในแมพ และแสดง Sound ID พร้อมปุ่ม Copy
+-- ====================================================
+
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+
+local LocalPlayer = Players.LocalPlayer
+
+-- เลือกว่าจะใส่ UI ไว้ใน CoreGui (สำหรับ Executor) หรือ PlayerGui
+local parentTarget = LocalPlayer:WaitForChild("PlayerGui")
+if gethui then
+    parentTarget = gethui()
+elseif syn and syn.protect_gui then
+    local gui = Instance.new("ScreenGui")
+    syn.protect_gui(gui)
+    gui.Parent = CoreGui
+    parentTarget = gui
+end
+
+-- สร้าง ScreenGui
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "SoundLoggerGui_" .. math.random(1000, 9999)
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = parentTarget
+
+-- ตารางเก็บ Sound ID ที่เคยบันทึกไว้ เพื่อไม่ให้ขึ้นซ้ำซ้อน
+local loggedSoundIds = {}
+
+-- Main Frame (หน้าต่างหลัก)
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 360, 0, 400)
+MainFrame.Position = UDim2.new(0.5, -180, 0.5, -200)
+MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
+MainFrame.BorderSizePixel = 0
+MainFrame.ClipsDescendants = true
+MainFrame.Parent = ScreenGui
+
+local MainUICorner = Instance.new("UICorner")
+MainUICorner.CornerRadius = UDim.new(0, 10)
+MainUICorner.Parent = MainFrame
+
+local MainUIStroke = Instance.new("UIStroke")
+MainUIStroke.Color = Color3.fromRGB(60, 60, 80)
+MainUIStroke.Thickness = 1.5
+MainUIStroke.Parent = MainFrame
+
+-- Top Bar (แถบด้านบน)
+local TopBar = Instance.new("Frame")
+TopBar.Name = "TopBar"
+TopBar.Size = UDim2.new(1, 0, 0, 40)
+TopBar.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+TopBar.BorderSizePixel = 0
+TopBar.Parent = MainFrame
+
+local TopBarCorner = Instance.new("UICorner")
+TopBarCorner.CornerRadius = UDim.new(0, 10)
+TopBarCorner.Parent = TopBar
+
+-- ปิดส่วนโค้งด้านล่างของ TopBar
+local TopBarFix = Instance.new("Frame")
+TopBarFix.Size = UDim2.new(1, 0, 0, 10)
+TopBarFix.Position = UDim2.new(0, 0, 1, -10)
+TopBarFix.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+TopBarFix.BorderSizePixel = 0
+TopBarFix.Parent = TopBar
+
+-- Title Text
+local TitleText = Instance.new("TextLabel")
+TitleText.Size = UDim2.new(1, -90, 1, 0)
+TitleText.Position = UDim2.new(0, 12, 0, 0)
+TitleText.BackgroundTransparency = 1
+TitleText.Text = "🎵 Sound Logger & Detector"
+TitleText.TextColor3 = Color3.fromRGB(240, 240, 250)
+TitleText.TextSize = 15
+TitleText.Font = Enum.Font.SourceSansBold
+TitleText.TextXAlignment = Enum.TextXAlignment.Left
+TitleText.Parent = TopBar
+
+-- Clear Button (ปุ่มล้างรายการ)
+local ClearBtn = Instance.new("TextButton")
+ClearBtn.Size = UDim2.new(0, 30, 0, 26)
+ClearBtn.Position = UDim2.new(1, -70, 0.5, -13)
+ClearBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+ClearBtn.Text = "🗑️"
+ClearBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+ClearBtn.TextSize = 13
+ClearBtn.Parent = TopBar
+
+local ClearBtnCorner = Instance.new("UICorner")
+ClearBtnCorner.CornerRadius = UDim.new(0, 6)
+ClearBtnCorner.Parent = ClearBtn
+
+-- Minimize Button (ปุ่มย่อหน้าต่าง)
+local MinimizeBtn = Instance.new("TextButton")
+MinimizeBtn.Size = UDim2.new(0, 30, 0, 26)
+MinimizeBtn.Position = UDim2.new(1, -35, 0.5, -13)
+MinimizeBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
+MinimizeBtn.Text = "—"
+MinimizeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+MinimizeBtn.TextSize = 14
+MinimizeBtn.Font = Enum.Font.SourceSansBold
+MinimizeBtn.Parent = TopBar
+
+local MinimizeBtnCorner = Instance.new("UICorner")
+MinimizeBtnCorner.CornerRadius = UDim.new(0, 6)
+MinimizeBtnCorner.Parent = MinimizeBtn
+
+-- Scroll Frame สำหรับรายการเพลง
+local ScrollFrame = Instance.new("ScrollingFrame")
+ScrollFrame.Name = "SoundList"
+ScrollFrame.Size = UDim2.new(1, -16, 1, -50)
+ScrollFrame.Position = UDim2.new(0, 8, 0, 45)
+ScrollFrame.BackgroundTransparency = 1
+ScrollFrame.BorderSizePixel = 0
+ScrollFrame.ScrollBarThickness = 5
+ScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 110)
+ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+ScrollFrame.Parent = MainFrame
+
+local UIListLayout = Instance.new("UIListLayout")
+UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+UIListLayout.Padding = UDim.new(0, 6)
+UIListLayout.Parent = ScrollFrame
+
+UIListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, UIListLayout.AbsoluteContentSize.Y + 10)
+end)
+
+-- ฟังก์ชันสกัดเอาเฉพาะตัวเลข Sound ID
+local function ExtractSoundId(rawId)
+    if not rawId then return "" end
+    local cleanId = string.match(tostring(rawId), "%d+")
+    return cleanId or ""
+end
+
+-- ฟังก์ชันคัดลอกลง Clipboard
+local function CopyToClipboard(text)
+    if setclipboard then
+        setclipboard(text)
+    elseif syn and syn.write_clipboard then
+        syn.write_clipboard(text)
+    elseif Clipboard and Clipboard.set then
+        Clipboard.set(text)
+    else
+        warn("Executor ของคุณไม่รองรับการคัดลอกลง Clipboard โดยอัตโนมัติ")
+    end
+end
+
+-- ฟังก์ชันสร้างการ์ดแสดงรายการเพลง
+local function AddSoundCard(soundObj, cleanId)
+    if loggedSoundIds[cleanId] then return end
+    loggedSoundIds[cleanId] = true
+
+    local Card = Instance.new("Frame")
+    Card.Name = "Card_" .. cleanId
+    Card.Size = UDim2.new(1, -6, 0, 50)
+    Card.BackgroundColor3 = Color3.fromRGB(35, 35, 48)
+    Card.BorderSizePixel = 0
+    Card.Parent = ScrollFrame
+
+    local CardCorner = Instance.new("UICorner")
+    CardCorner.CornerRadius = UDim.new(0, 8)
+    CardCorner.Parent = Card
+
+    -- ชื่อ/ที่มาของเสียง
+    local SoundNameLabel = Instance.new("TextLabel")
+    SoundNameLabel.Size = UDim2.new(1, -95, 0, 22)
+    SoundNameLabel.Position = UDim2.new(0, 10, 0, 4)
+    SoundNameLabel.BackgroundTransparency = 1
+    SoundNameLabel.Text = "📌 " .. (soundObj.Name ~= "" and soundObj.Name or "Unknown Sound")
+    SoundNameLabel.TextColor3 = Color3.fromRGB(220, 220, 230)
+    SoundNameLabel.TextSize = 13
+    SoundNameLabel.Font = Enum.Font.SourceSansBold
+    SoundNameLabel.TextXAlignment = Enum.TextXAlignment.Left
+    SoundNameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+    SoundNameLabel.Parent = Card
+
+    -- แสดง ID
+    local IDLabel = Instance.new("TextLabel")
+    IDLabel.Size = UDim2.new(1, -95, 0, 18)
+    IDLabel.Position = UDim2.new(0, 10, 0, 24)
+    IDLabel.BackgroundTransparency = 1
+    IDLabel.Text = "ID: " .. cleanId
+    IDLabel.TextColor3 = Color3.fromRGB(150, 150, 180)
+    IDLabel.TextSize = 12
+    IDLabel.Font = Enum.Font.SourceSans
+    IDLabel.TextXAlignment = Enum.TextXAlignment.Left
+    IDLabel.Parent = Card
+
+    -- ปุ่มคัดลอก
+    local CopyBtn = Instance.new("TextButton")
+    CopyBtn.Size = UDim2.new(0, 75, 0, 32)
+    CopyBtn.Position = UDim2.new(1, -82, 0.5, -16)
+    CopyBtn.BackgroundColor3 = Color3.fromRGB(65, 105, 225)
+    CopyBtn.Text = "📋 Copy"
+    CopyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    CopyBtn.TextSize = 12
+    CopyBtn.Font = Enum.Font.SourceSansBold
+    CopyBtn.Parent = Card
+
+    local CopyBtnCorner = Instance.new("UICorner")
+    CopyBtnCorner.CornerRadius = UDim.new(0, 6)
+    CopyBtnCorner.Parent = CopyBtn
+
+    -- Event เมื่อกดปุ่มคัดลอก
+    CopyBtn.MouseButton1Click:Connect(function()
+        CopyToClipboard(cleanId)
+        
+        -- Effect ตอบสนองเมื่อกดปุ่ม
+        CopyBtn.Text = "✅ Copied!"
+        CopyBtn.BackgroundColor3 = Color3.fromRGB(46, 139, 87)
+        
+        task.delay(1.5, function()
+            if CopyBtn and CopyBtn.Parent then
+                CopyBtn.Text = "📋 Copy"
+                CopyBtn.BackgroundColor3 = Color3.fromRGB(65, 105, 225)
+            end
+        end)
+    end)
+end
+
+-- ฟังก์ชันตรวจสอบ Instance ว่าเป็น Sound และมี ID หรือไม่
+local function ProcessSound(instance)
+    if instance:IsA("Sound") then
+        local function CheckAndAdd()
+            local cleanId = ExtractSoundId(instance.SoundId)
+            if cleanId ~= "" and (instance.IsPlaying or instance.TimePosition > 0) then
+                AddSoundCard(instance, cleanId)
+            end
+        end
+
+        -- ตรวจสอบทันที
+        CheckAndAdd()
+
+        -- ฟังการทำงานเมื่อมีการเล่นเพลง
+        instance.Played:Connect(function()
+            local cleanId = ExtractSoundId(instance.SoundId)
+            if cleanId ~= "" then
+                AddSoundCard(instance, cleanId)
+            end
+        end)
+
+        -- ตรวจจับกรณีเปลี่ยน SoundId ระหว่างทาง
+        instance:GetPropertyChangedSignal("SoundId"):Connect(function()
+            local cleanId = ExtractSoundId(instance.SoundId)
+            if cleanId ~= "" and instance.IsPlaying then
+                AddSoundCard(instance, cleanId)
+            end
+        end)
+        
+        -- ตรวจจับเมื่อ IsPlaying เปลี่ยนเป็น true
+        instance:GetPropertyChangedSignal("IsPlaying"):Connect(function()
+            if instance.IsPlaying then
+                local cleanId = ExtractSoundId(instance.SoundId)
+                if cleanId ~= "" then
+                    AddSoundCard(instance, cleanId)
+                end
+            end
+        end)
+    end
+end
+
+-- สแกน Sound ทั้งหมดที่มีอยู่ในเกม ณ ปัจจุบัน
+for _, item in ipairs(game:GetDescendants()) do
+    pcall(function()
+        ProcessSound(item)
+    end)
+end
+
+-- ดักจับ Sound ใหม่ๆ ที่เพิ่งถูกสร้างขึ้นมาในเกม
+game.DescendantAdded:Connect(function(item)
+    pcall(function()
+        ProcessSound(item)
+    end)
+end)
+
+-- ปุ่ม Clear รายการทั้งหมด
+ClearBtn.MouseButton1Click:Connect(function()
+    table.clear(loggedSoundIds)
+    for _, child in ipairs(ScrollFrame:GetChildren()) do
+        if child:IsA("Frame") then
+            child:Destroy()
+        end
+    end
+end)
+
+-- ระบบ ย่อ/ขยาย หน้าต่าง
+local isMinimized = false
+MinimizeBtn.MouseButton1Click:Connect(function()
+    isMinimized = not isMinimized
+    if isMinimized then
+        TweenService:Create(MainFrame, TweenInfo.new(0.3), {Size = UDim2.new(0, 360, 0, 40)}):Play()
+        ScrollFrame.Visible = false
+        MinimizeBtn.Text = "+"
+    else
+        TweenService:Create(MainFrame, TweenInfo.new(0.3), {Size = UDim2.new(0, 360, 0, 400)}):Play()
+        task.delay(0.15, function()
+            ScrollFrame.Visible = true
+        end)
+        MinimizeBtn.Text = "—"
+    end
+end)
+
+-- ระบบ ลากหน้าต่าง UI (Draggable Window)
+local dragging, dragInput, dragStart, startPos
+
+local function update(input)
+    local delta = input.Position - dragStart
+    MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+end
+
+TopBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = MainFrame.Position
+
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+TopBar.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        update(input)
+    end
+end)
+
+print("[Sound Logger] Loaded Successfully!")
+
