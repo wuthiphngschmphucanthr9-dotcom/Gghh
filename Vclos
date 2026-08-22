@@ -1,0 +1,308 @@
+--[[
+    SUNDAY HUB - The Strongest Battlegrounds (TSB)
+    Theme: Purple/Pink Neon UI
+    Features:
+    - Auto Follow / Target (Auto Switch on Target Death)
+    - Auto Parry / Block on Incoming Skill/Attack
+]]--
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+
+local LocalPlayer = Players.LocalPlayer
+
+-- Configuration Settings
+local Config = {
+    AutoTarget = false,
+    AutoBlock = false,
+    TargetDistance = 3.5,
+    BlockRadius = 20,
+    CurrentTarget = nil
+}
+
+-- Cleanup Existing UI if any
+if game:GetService("CoreGui"):FindFirstChild("SundayHubUI") then
+    game:GetService("CoreGui").SundayHubUI:Destroy()
+end
+
+-- UI Construction
+local SundayGui = Instance.new("ScreenGui")
+SundayGui.Name = "SundayHubUI"
+SundayGui.ResetOnSpawn = false
+
+-- Use CoreGui if available, fallback to PlayerGui
+if syn and syn.protect_gui then
+    syn.protect_gui(SundayGui)
+    SundayGui.Parent = game:GetService("CoreGui")
+elseif gethui then
+    SundayGui.Parent = gethui()
+else
+    SundayGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+end
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 300, 0, 260)
+MainFrame.Position = UDim2.new(0.05, 0, 0.3, 0)
+MainFrame.BackgroundColor3 = Color3.fromRGB(20, 15, 30)
+MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.Parent = SundayGui
+
+local FrameCorner = Instance.new("UICorner")
+FrameCorner.CornerRadius = UDim2.new(0, 10)
+FrameCorner.Parent = MainFrame
+
+-- Purple Neon Border Stroke
+local UIStroke = Instance.new("UIStroke")
+UIStroke.Color = Color3.fromRGB(180, 50, 240)
+UIStroke.Thickness = 2
+UIStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+UIStroke.Parent = MainFrame
+
+-- Header Title Bar
+local TitleBar = Instance.new("Frame")
+TitleBar.Name = "TitleBar"
+TitleBar.Size = UDim2.new(1, 0, 0, 45)
+TitleBar.BackgroundColor3 = Color3.fromRGB(35, 20, 50)
+TitleBar.BorderSizePixel = 0
+TitleBar.Parent = MainFrame
+
+local TitleCorner = Instance.new("UICorner")
+TitleCorner.CornerRadius = UDim2.new(0, 10)
+TitleCorner.Parent = TitleBar
+
+local TitleText = Instance.new("TextLabel")
+TitleText.Name = "TitleText"
+TitleText.Size = UDim2.new(1, -10, 1, 0)
+TitleText.Position = UDim2.new(0, 10, 0, 0)
+TitleText.BackgroundTransparency = 1
+TitleText.Text = "â¡ SUNDAY HUB â¡"
+TitleText.TextColor3 = Color3.fromRGB(255, 105, 220)
+TitleText.TextSize = 18
+TitleText.Font = Enum.Font.FredokaOne
+TitleText.TextXAlignment = Enum.TextXAlignment.Left
+TitleText.Parent = TitleBar
+
+local SubTitleText = Instance.new("TextLabel")
+SubTitleText.Size = UDim2.new(1, -15, 1, 0)
+SubTitleText.BackgroundTransparency = 1
+SubTitleText.Text = "TSB Script"
+SubTitleText.TextColor3 = Color3.fromRGB(180, 140, 255)
+SubTitleText.TextSize = 12
+SubTitleText.Font = Enum.Font.GothamMedium
+SubTitleText.TextXAlignment = Enum.TextXAlignment.Right
+SubTitleText.Parent = TitleBar
+
+-- UI Button Generator Helper Function
+local function createToggleBtn(name, text, pos)
+    local Container = Instance.new("Frame")
+    Container.Size = UDim2.new(0.88, 0, 0, 40)
+    Container.Position = pos
+    Container.BackgroundColor3 = Color3.fromRGB(30, 22, 45)
+    Container.Parent = MainFrame
+
+    local BtnCorner = Instance.new("UICorner")
+    BtnCorner.CornerRadius = UDim2.new(0, 8)
+    BtnCorner.Parent = Container
+
+    local BtnStroke = Instance.new("UIStroke")
+    BtnStroke.Color = Color3.fromRGB(80, 40, 110)
+    BtnStroke.Thickness = 1
+    BtnStroke.Parent = Container
+
+    local BtnText = Instance.new("TextLabel")
+    BtnText.Size = UDim2.new(0.7, 0, 1, 0)
+    BtnText.Position = UDim2.new(0, 10, 0, 0)
+    BtnText.BackgroundTransparency = 1
+    BtnText.Text = text
+    BtnText.TextColor3 = Color3.fromRGB(230, 220, 255)
+    BtnText.TextSize = 13
+    BtnText.Font = Enum.Font.GothamBold
+    BtnText.TextXAlignment = Enum.TextXAlignment.Left
+    BtnText.Parent = Container
+
+    local ToggleSwitch = Instance.new("TextButton")
+    ToggleSwitch.Name = name
+    ToggleSwitch.Size = UDim2.new(0.22, 0, 0.6, 0)
+    ToggleSwitch.Position = UDim2.new(0.75, 0, 0.2, 0)
+    ToggleSwitch.BackgroundColor3 = Color3.fromRGB(60, 50, 80)
+    ToggleSwitch.Text = "OFF"
+    ToggleSwitch.TextColor3 = Color3.fromRGB(150, 150, 170)
+    ToggleSwitch.Font = Enum.Font.GothamBold
+    ToggleSwitch.TextSize = 11
+    ToggleSwitch.AutoButtonColor = false
+    ToggleSwitch.Parent = Container
+
+    local SwitchCorner = Instance.new("UICorner")
+    SwitchCorner.CornerRadius = UDim2.new(0, 6)
+    SwitchCorner.Parent = ToggleSwitch
+
+    return ToggleSwitch, BtnStroke
+end
+
+local TargetToggle, TargetStroke = createToggleBtn("TargetToggle", "à¸£à¸°à¸à¸à¸à¸²à¸¡à¸¥à¹à¸² (Auto Target)", UDim2.new(0.06, 0, 0.25, 0))
+local BlockToggle, BlockStroke = createToggleBtn("BlockToggle", "à¸­à¸­à¹à¸à¹à¸à¸¥à¹à¸­à¸ (Auto Block)", UDim2.new(0.06, 0, 0.46, 0))
+
+-- Target Status Label
+local StatusLabel = Instance.new("TextLabel")
+StatusLabel.Size = UDim2.new(0.88, 0, 0, 30)
+StatusLabel.Position = UDim2.new(0.06, 0, 0.68, 0)
+StatusLabel.BackgroundColor3 = Color3.fromRGB(25, 18, 38)
+StatusLabel.Text = "à¹à¸à¹à¸²à¸«à¸¡à¸²à¸¢: à¹à¸¡à¹à¸¡à¸µ"
+StatusLabel.TextColor3 = Color3.fromRGB(200, 170, 245)
+StatusLabel.TextSize = 12
+StatusLabel.Font = Enum.Font.Gotham
+StatusLabel.Parent = MainFrame
+
+local StatusCorner = Instance.new("UICorner")
+StatusCorner.CornerRadius = UDim2.new(0, 6)
+StatusCorner.Parent = StatusLabel
+
+-- Footer Info
+local FooterLabel = Instance.new("TextLabel")
+FooterLabel.Size = UDim2.new(1, 0, 0, 20)
+FooterLabel.Position = UDim2.new(0, 0, 0.88, 0)
+FooterLabel.BackgroundTransparency = 1
+FooterLabel.Text = "à¸à¸ [Insert] à¹à¸à¸·à¹à¸­à¸à¹à¸­à¸ / à¹à¸ªà¸à¸ UI"
+FooterLabel.TextColor3 = Color3.fromRGB(120, 100, 160)
+FooterLabel.TextSize = 10
+FooterLabel.Font = Enum.Font.Gotham
+FooterLabel.Parent = MainFrame
+
+-- Auto Target Utility Functions
+local function getValidTarget()
+    local candidates = {}
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("Humanoid") and plr.Character:FindFirstChild("HumanoidRootPart") then
+            if plr.Character.Humanoid.Health > 0 then
+                table.insert(candidates, plr)
+            end
+        end
+    end
+
+    if #candidates > 0 then
+        return candidates[math.random(1, #candidates)]
+    end
+    return nil
+end
+
+-- Auto Block/Parry Trigger Function
+local isParrying = false
+local function triggerParry()
+    if isParrying then return end
+    isParrying = true
+
+    -- Virtual press 'F' key
+    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.F, false, game)
+    task.wait(0.5)
+    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.F, false, game)
+
+    isParrying = false
+end
+
+-- Core Logic Loop
+RunService.Heartbeat:Connect(function()
+    -- 1. Auto Target & Auto Switch Logic
+    if Config.AutoTarget then
+        if not Config.CurrentTarget or 
+           not Config.CurrentTarget.Parent or 
+           not Config.CurrentTarget.Character or 
+           not Config.CurrentTarget.Character:FindFirstChild("Humanoid") or 
+           Config.CurrentTarget.Character.Humanoid.Health <= 0 then
+            
+            Config.CurrentTarget = getValidTarget()
+            if Config.CurrentTarget then
+                StatusLabel.Text = "à¹à¸à¹à¸²à¸«à¸¡à¸²à¸¢: " .. Config.CurrentTarget.DisplayName .. " (@" .. Config.CurrentTarget.Name .. ")"
+            else
+                StatusLabel.Text = "à¹à¸à¹à¸²à¸«à¸¡à¸²à¸¢: à¸à¹à¸à¸«à¸²à¹à¸¡à¹à¸à¸..."
+            end
+        end
+
+        -- Teleport / Track Target
+        if Config.CurrentTarget and Config.CurrentTarget.Character and Config.CurrentTarget.Character:FindFirstChild("HumanoidRootPart") then
+            local myChar = LocalPlayer.Character
+            if myChar and myChar:FindFirstChild("HumanoidRootPart") then
+                local targetCFrame = Config.CurrentTarget.Character.HumanoidRootPart.CFrame
+                myChar.HumanoidRootPart.CFrame = targetCFrame * CFrame.new(0, 0, Config.TargetDistance)
+            end
+        end
+    end
+
+    -- 2. Auto Block / Parry Logic
+    if Config.AutoBlock then
+        local myChar = LocalPlayer.Character
+        if myChar and myChar:FindFirstChild("HumanoidRootPart") then
+            local myPos = myChar.HumanoidRootPart.Position
+
+            for _, enemy in ipairs(Players:GetPlayers()) do
+                if enemy ~= LocalPlayer and enemy.Character then
+                    local enemyHRP = enemy.Character:FindFirstChild("HumanoidRootPart")
+                    local enemyHum = enemy.Character:FindFirstChildOfClass("Humanoid")
+
+                    if enemyHRP and enemyHum then
+                        local distance = (enemyHRP.Position - myPos).Magnitude
+                        if distance <= Config.BlockRadius then
+                            -- Check active attack animations
+                            for _, track in ipairs(enemyHum:GetPlayingAnimationTracks()) do
+                                if track.IsPlaying and (track.Animation.AnimationId:find("attack") or track.Animation.AnimationId:find("skill") or track.WeightCurrent > 0.4) then
+                                    triggerParry()
+                                    break
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- Button Interactions with Pink/Purple Animation
+local function updateButtonVisual(button, stroke, state)
+    if state then
+        button.Text = "ON"
+        button.BackgroundColor3 = Color3.fromRGB(230, 60, 200)
+        button.TextColor3 = Color3.fromRGB(255, 255, 255)
+        stroke.Color = Color3.fromRGB(230, 60, 200)
+    else
+        button.Text = "OFF"
+        button.BackgroundColor3 = Color3.fromRGB(60, 50, 80)
+        button.TextColor3 = Color3.fromRGB(150, 150, 170)
+        stroke.Color = Color3.fromRGB(80, 40, 110)
+    end
+end
+
+TargetToggle.MouseButton1Click:Connect(function()
+    Config.AutoTarget = not Config.AutoTarget
+    updateButtonVisual(TargetToggle, TargetStroke, Config.AutoTarget)
+    
+    if Config.AutoTarget then
+        Config.CurrentTarget = getValidTarget()
+        if Config.CurrentTarget then
+            StatusLabel.Text = "à¹à¸à¹à¸²à¸«à¸¡à¸²à¸¢: " .. Config.CurrentTarget.DisplayName
+        end
+    else
+        Config.CurrentTarget = nil
+        StatusLabel.Text = "à¹à¸à¹à¸²à¸«à¸¡à¸²à¸¢: à¸à¸´à¸à¸à¸²à¸£à¸à¸³à¸à¸²à¸"
+    end
+end)
+
+BlockToggle.MouseButton1Click:Connect(function()
+    Config.AutoBlock = not Config.AutoBlock
+    updateButtonVisual(BlockToggle, BlockStroke, Config.AutoBlock)
+end)
+
+-- Toggle UI Visibility via Insert Key
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed and input.KeyCode == Enum.KeyCode.Insert then
+        MainFrame.Visible = not MainFrame.Visible
+    end
+end)
+
+print("Sunday Hub loaded successfully!")
+
