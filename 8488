@@ -1,0 +1,323 @@
+--[[
+    848 by Sunday - The Strongest Battlegrounds Target Script
+    - Auto Follow Target Behind (Persists through death/respawn, stops only on leave/toggle off)
+    - Auto Camera Lock
+    - Compact RGB/Rainbow UI
+--]]
+
+-- Services
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+-- Local State
+local SelectedPlayerName = ""
+local TargetTeleportEnabled = false
+local AutoLockEnabled = false
+local DistanceBehind = 3
+
+local TeleportConnection = nil
+local LockConnection = nil
+
+-- Remove existing UI if re-executed
+if CoreGui:FindFirstChild("SundayTargetUI") then
+    CoreGui.SundayTargetUI:Destroy()
+end
+
+-- Create ScreenGui
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "SundayTargetUI"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = (gethui and gethui()) or CoreGui or LocalPlayer:WaitForChild("PlayerGui")
+
+-- Main Window (Compact UI)
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 240, 0, 310)
+MainFrame.Position = UDim2.new(0.05, 0, 0.2, 0)
+MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.Parent = ScreenGui
+
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(0, 10)
+UICorner.Parent = MainFrame
+
+-- UI Stroke (Rainbow Glow Border)
+local UIStroke = Instance.new("UIStroke")
+UIStroke.Thickness = 2
+UIStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+UIStroke.Parent = MainFrame
+
+-- Top Bar Title (848 by Sunday)
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Name = "TitleLabel"
+TitleLabel.Size = UDim2.new(1, -20, 0, 35)
+TitleLabel.Position = UDim2.new(0, 10, 0, 5)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Text = "848 by Sunday"
+TitleLabel.Font = Enum.Font.FredokaOne
+TitleLabel.TextSize = 20
+TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Center
+TitleLabel.Parent = MainFrame
+
+-- Subtitle / Status
+local StatusLabel = Instance.new("TextLabel")
+StatusLabel.Name = "StatusLabel"
+StatusLabel.Size = UDim2.new(1, -20, 0, 18)
+StatusLabel.Position = UDim2.new(0, 10, 0, 35)
+StatusLabel.BackgroundTransparency = 1
+StatusLabel.Text = "à¸ªà¸à¸²à¸à¸°: à¸£à¸­à¹à¸¥à¸·à¸­à¸à¹à¸à¹à¸²à¸«à¸¡à¸²à¸¢"
+StatusLabel.Font = Enum.Font.SourceSansBold
+StatusLabel.TextSize = 13
+StatusLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
+StatusLabel.TextXAlignment = Enum.TextXAlignment.Center
+StatusLabel.Parent = MainFrame
+
+-- Rainbow Effect Function
+local function ApplyRainbowEffect(textLabel, stroke)
+    task.spawn(function()
+        local hue = 0
+        while textLabel and textLabel.Parent do
+            hue = (hue + 0.005) % 1
+            local color = Color3.fromHSV(hue, 0.8, 1)
+            textLabel.TextColor3 = color
+            if stroke then
+                stroke.Color = color
+            end
+            task.wait(0.03)
+        end
+    end)
+end
+ApplyRainbowEffect(TitleLabel, UIStroke)
+
+-- Scroll Frame for Controls
+local Container = Instance.new("ScrollingFrame")
+Container.Size = UDim2.new(1, -16, 1, -65)
+Container.Position = UDim2.new(0, 8, 0, 55)
+Container.BackgroundTransparency = 1
+Container.BorderSizePixel = 0
+Container.ScrollBarThickness = 3
+Container.CanvasSize = UDim2.new(0, 0, 0, 260)
+Container.Parent = MainFrame
+
+local UIListLayout = Instance.new("UIListLayout")
+UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+UIListLayout.Padding = UDim.new(0, 8)
+UIListLayout.Parent = Container
+
+-- Helper function to create stylish buttons
+local function CreateStyledButton(text, parent)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, -4, 0, 32)
+    btn.BackgroundColor3 = Color3.fromRGB(30, 32, 42)
+    btn.Text = text
+    btn.Font = Enum.Font.SourceSansBold
+    btn.TextSize = 14
+    btn.TextColor3 = Color3.fromRGB(240, 240, 240)
+    btn.AutoButtonColor = true
+    btn.Parent = parent
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 6)
+    corner.Parent = btn
+
+    local bStroke = Instance.new("UIStroke")
+    bStroke.Thickness = 1
+    bStroke.Color = Color3.fromRGB(60, 60, 80)
+    bStroke.Parent = btn
+
+    return btn, bStroke
+end
+
+-- Player Selector Dropdown / Cycle Button
+local SelectPlayerBtn, SelectStroke = CreateStyledButton("ð¤ à¹à¸¥à¸·à¸­à¸à¸à¸¹à¹à¹à¸¥à¹à¸: [à¸à¸à¹à¸à¸·à¹à¸­à¹à¸à¸¥à¸µà¹à¸¢à¸]", Container)
+
+local PlayersList = {}
+local CurrentPlayerIdx = 0
+
+local function UpdatePlayersList()
+    PlayersList = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer then
+            table.insert(PlayersList, p.Name)
+        end
+    end
+end
+
+SelectPlayerBtn.MouseButton1Click:Connect(function()
+    UpdatePlayersList()
+    if #PlayersList == 0 then
+        SelectedPlayerName = ""
+        SelectPlayerBtn.Text = "ð¤ à¹à¸¡à¹à¸à¸à¸à¸¹à¹à¹à¸¥à¹à¸à¸­à¸·à¹à¸"
+        StatusLabel.Text = "à¸ªà¸à¸²à¸à¸°: à¹à¸¡à¹à¸¡à¸µà¸à¸¹à¹à¹à¸¥à¹à¸à¸­à¸·à¹à¸à¹à¸à¸«à¹à¸­à¸"
+        return
+    end
+
+    CurrentPlayerIdx = CurrentPlayerIdx + 1
+    if CurrentPlayerIdx > #PlayersList then
+        CurrentPlayerIdx = 1
+    end
+
+    SelectedPlayerName = PlayersList[CurrentPlayerIdx]
+    SelectPlayerBtn.Text = "ð¤ à¹à¸à¹à¸²à¸«à¸¡à¸²à¸¢: " .. SelectedPlayerName
+    StatusLabel.Text = "à¸ªà¸à¸²à¸à¸°: à¹à¸¥à¸·à¸­à¸ " .. SelectedPlayerName
+    StatusLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
+end)
+
+-- Teleport Toggle Button
+local TeleportBtn, TeleportStroke = CreateStyledButton("ð à¸§à¸²à¸£à¹à¸à¸à¸´à¸à¸«à¸¥à¸±à¸ (OFF)", Container)
+
+-- Function Teleport Loop
+local function StartTeleportLoop()
+    if TeleportConnection then TeleportConnection:Disconnect() end
+    
+    TeleportConnection = RunService.Heartbeat:Connect(function()
+        if not TargetTeleportEnabled then return end
+        if SelectedPlayerName == "" then return end
+
+        local targetPlayer = Players:FindFirstChild(SelectedPlayerName)
+        
+        -- à¸à¹à¸²à¸à¸¹à¹à¹à¸¥à¹à¸à¸­à¸­à¸à¸à¸²à¸à¹à¸à¸¡
+        if not targetPlayer then
+            TargetTeleportEnabled = false
+            TeleportBtn.Text = "ð à¸§à¸²à¸£à¹à¸à¸à¸´à¸à¸«à¸¥à¸±à¸ (OFF)"
+            TeleportBtn.BackgroundColor3 = Color3.fromRGB(30, 32, 42)
+            TeleportStroke.Color = Color3.fromRGB(60, 60, 80)
+            StatusLabel.Text = "à¸ªà¸à¸²à¸à¸°: à¹à¸à¹à¸²à¸«à¸¡à¸²à¸¢à¸­à¸­à¸à¸à¸²à¸à¹à¸à¸¡à¹à¸¥à¹à¸§"
+            StatusLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
+            if TeleportConnection then
+                TeleportConnection:Disconnect()
+                TeleportConnection = nil
+            end
+            return
+        end
+
+        -- à¸à¸£à¸§à¸à¸ªà¸­à¸à¸à¸±à¸§à¸¥à¸°à¸à¸£à¹à¸à¹à¸²à¸«à¸¡à¸²à¸¢à¹à¸¥à¸°à¸à¸±à¸§à¹à¸£à¸²
+        local targetChar = targetPlayer.Character
+        local myChar = LocalPlayer.Character
+
+        if targetChar and myChar and targetChar:FindFirstChild("HumanoidRootPart") and myChar:FindFirstChild("HumanoidRootPart") then
+            local targetHrp = targetChar.HumanoidRootPart
+            local myHrp = myChar.HumanoidRootPart
+            local targetHum = targetChar:FindFirstChildOfClass("Humanoid")
+            local myHum = myChar:FindFirstChildOfClass("Humanoid")
+
+            -- à¸«à¸²à¸à¹à¸à¹à¸²à¸«à¸¡à¸²à¸¢à¸¢à¸±à¸à¸¡à¸µà¸à¸µà¸§à¸´à¸à¸­à¸¢à¸¹à¹
+            if targetHum and targetHum.Health > 0 and myHum and myHum.Health > 0 then
+                StatusLabel.Text = "à¸ªà¸à¸²à¸à¸°: à¸à¸³à¸¥à¸±à¸à¸à¸´à¸à¸«à¸¥à¸±à¸ " .. SelectedPlayerName
+                StatusLabel.TextColor3 = Color3.fromRGB(0, 255, 200)
+
+                -- à¸à¸³à¸à¸§à¸à¸à¸³à¹à¸«à¸à¹à¸à¸§à¸²à¸£à¹à¸à¹à¸à¸à¹à¸²à¸à¸«à¸¥à¸±à¸à¹à¸à¹à¸²à¸«à¸¡à¸²à¸¢
+                local behindCFrame = targetHrp.CFrame * CFrame.new(0, 0, DistanceBehind)
+                myHrp.CFrame = CFrame.new(behindCFrame.Position, targetHrp.Position + targetHrp.CFrame.LookVector * 10)
+            else
+                -- à¸à¹à¸²à¹à¸à¹à¸²à¸«à¸¡à¸²à¸¢à¸à¸²à¸¢ à¸«à¸£à¸·à¸­à¹à¸£à¸²à¸à¸²à¸¢ à¹à¸«à¹à¸£à¸­à¹à¸à¸´à¸à¹à¸«à¸¡à¹à¹à¸¥à¹à¸§à¸§à¸²à¸£à¹à¸à¹à¸à¸«à¸²à¹à¸«à¸¡à¹ (à¹à¸¡à¹à¸à¸´à¸à¸à¸²à¸£à¸à¸³à¸à¸²à¸)
+                StatusLabel.Text = "à¸ªà¸à¸²à¸à¸°: à¸£à¸­à¹à¸à¹à¸²à¸«à¸¡à¸²à¸¢à¹à¸à¸´à¸à¹à¸«à¸¡à¹..."
+                StatusLabel.TextColor3 = Color3.fromRGB(255, 200, 0)
+            end
+        else
+            StatusLabel.Text = "à¸ªà¸à¸²à¸à¸°: à¸£à¸­à¸à¸±à¸§à¸¥à¸°à¸à¸£à¹à¸«à¸¥à¸..."
+            StatusLabel.TextColor3 = Color3.fromRGB(255, 200, 0)
+        end
+    end)
+end
+
+TeleportBtn.MouseButton1Click:Connect(function()
+    if SelectedPlayerName == "" then
+        StatusLabel.Text = "à¸ªà¸à¸²à¸à¸°: à¸à¸£à¸¸à¸à¸²à¹à¸¥à¸·à¸­à¸à¸à¸¹à¹à¹à¸¥à¹à¸à¸à¹à¸­à¸!"
+        StatusLabel.TextColor3 = Color3.fromRGB(255, 80, 80)
+        return
+    end
+
+    TargetTeleportEnabled = not TargetTeleportEnabled
+
+    if TargetTeleportEnabled then
+        TeleportBtn.Text = "ð à¸§à¸²à¸£à¹à¸à¸à¸´à¸à¸«à¸¥à¸±à¸ (ON)"
+        TeleportBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 100)
+        TeleportStroke.Color = Color3.fromRGB(0, 255, 150)
+        StartTeleportLoop()
+    else
+        TeleportBtn.Text = "ð à¸§à¸²à¸£à¹à¸à¸à¸´à¸à¸«à¸¥à¸±à¸ (OFF)"
+        TeleportBtn.BackgroundColor3 = Color3.fromRGB(30, 32, 42)
+        TeleportStroke.Color = Color3.fromRGB(60, 60, 80)
+        StatusLabel.Text = "à¸ªà¸à¸²à¸à¸°: à¸à¸´à¸à¸à¸²à¸£à¸§à¸²à¸£à¹à¸à¹à¸¥à¹à¸§"
+        StatusLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
+        if TeleportConnection then
+            TeleportConnection:Disconnect()
+            TeleportConnection = nil
+        end
+    end
+end)
+
+-- Auto Lock Camera Toggle
+local LockBtn, LockStroke = CreateStyledButton("ð¯ Auto Lock à¸à¸¥à¹à¸­à¸ (OFF)", Container)
+
+LockBtn.MouseButton1Click:Connect(function()
+    AutoLockEnabled = not AutoLockEnabled
+
+    if AutoLockEnabled then
+        LockBtn.Text = "ð¯ Auto Lock à¸à¸¥à¹à¸­à¸ (ON)"
+        LockBtn.BackgroundColor3 = Color3.fromRGB(140, 0, 150)
+        LockStroke.Color = Color3.fromRGB(220, 0, 255)
+
+        LockConnection = RunService.RenderStepped:Connect(function()
+            if SelectedPlayerName ~= "" then
+                local targetPlayer = Players:FindFirstChild(SelectedPlayerName)
+                if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                    local targetHrp = targetPlayer.Character.HumanoidRootPart
+                    Camera.CFrame = CFrame.new(Camera.CFrame.Position, targetHrp.Position)
+                end
+            end
+        end)
+    else
+        LockBtn.Text = "ð¯ Auto Lock à¸à¸¥à¹à¸­à¸ (OFF)"
+        LockBtn.BackgroundColor3 = Color3.fromRGB(30, 32, 42)
+        LockStroke.Color = Color3.fromRGB(60, 60, 80)
+        if LockConnection then
+            LockConnection:Disconnect()
+            LockConnection = nil
+        end
+    end
+end)
+
+-- Distance Slider / Adjuster
+local DistBtn, _ = CreateStyledButton("ð à¸£à¸°à¸¢à¸°à¸«à¹à¸²à¸: " .. tostring(DistanceBehind) .. " Studs", Container)
+
+DistBtn.MouseButton1Click:Connect(function()
+    DistanceBehind = DistanceBehind + 1
+    if DistanceBehind > 8 then
+        DistanceBehind = 1
+    end
+    DistBtn.Text = "ð à¸£à¸°à¸¢à¸°à¸«à¹à¸²à¸: " .. tostring(DistanceBehind) .. " Studs"
+end)
+
+-- Auto-Refresh List on Player Leave
+Players.PlayerRemoving:Connect(function(player)
+    if player.Name == SelectedPlayerName then
+        SelectedPlayerName = ""
+        TargetTeleportEnabled = false
+        TeleportBtn.Text = "ð à¸§à¸²à¸£à¹à¸à¸à¸´à¸à¸«à¸¥à¸±à¸ (OFF)"
+        TeleportBtn.BackgroundColor3 = Color3.fromRGB(30, 32, 42)
+        TeleportStroke.Color = Color3.fromRGB(60, 60, 80)
+        SelectPlayerBtn.Text = "ð¤ à¹à¸¥à¸·à¸­à¸à¸à¸¹à¹à¹à¸¥à¹à¸: [à¸à¸à¹à¸à¸·à¹à¸­à¹à¸à¸¥à¸µà¹à¸¢à¸]"
+        StatusLabel.Text = "à¸ªà¸à¸²à¸à¸°: à¹à¸à¹à¸²à¸«à¸¡à¸²à¸¢à¸­à¸­à¸à¸à¸²à¸à¹à¸à¸¡à¹à¸¥à¹à¸§"
+        StatusLabel.TextColor3 = Color3.fromRGB(255, 80, 80)
+        
+        if TeleportConnection then
+            TeleportConnection:Disconnect()
+            TeleportConnection = nil
+        end
+    end
+end)
+
+print("848 by Sunday UI Loaded Successfully!")
+
