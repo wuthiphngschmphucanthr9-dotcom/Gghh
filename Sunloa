@@ -1,0 +1,222 @@
+--[[
+    The Strongest Battlegrounds - Helper Script
+    Features:
+    1. Auto Follow/Target Player (Switch target automatically when current target dies)
+    2. Auto Parry/Block when skill/attack comes nearby
+]]--
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+-- Configurations & States
+local Settings = {
+    AutoTarget = false,
+    AutoBlock = false,
+    TargetDistance = 4, -- Distance to keep from target player
+    BlockRadius = 25,   -- Detection radius for auto block
+    SelectedTarget = nil
+}
+
+-- Create UI Hub
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "TSB_Script_Hub"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 260, 0, 220)
+MainFrame.Position = UDim2.new(0.05, 0, 0.3, 0)
+MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
+MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.Parent = ScreenGui
+
+-- UI Corner & Title
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim2.new(0, 8)
+UICorner.Parent = MainFrame
+
+local Title = Instance.new("TextLabel")
+Title.Name = "Title"
+Title.Size = UDim2.new(1, 0, 0, 40)
+Title.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+Title.Text = "TSB Hub - à¸ªà¸à¸²à¸¡à¸£à¸à¸à¸µà¹à¹à¸à¹à¸à¹à¸à¸£à¹à¸"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.TextSize = 14
+Title.Font = Enum.Font.SourceSansBold
+Title.Parent = MainFrame
+
+local TitleCorner = Instance.new("UICorner")
+TitleCorner.CornerRadius = UDim2.new(0, 8)
+TitleCorner.Parent = Title
+
+-- Button Creation Utility
+local function createButton(name, text, position, parent)
+    local btn = Instance.new("TextButton")
+    btn.Name = name
+    btn.Size = UDim2.new(0.85, 0, 0, 35)
+    btn.Position = position
+    btn.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+    btn.Text = text
+    btn.TextColor3 = Color3.fromRGB(200, 200, 200)
+    btn.TextSize = 13
+    btn.Font = Enum.Font.SourceSans
+    btn.Parent = parent
+
+    local btnCorner = Instance.new("UICorner")
+    btnCorner.CornerRadius = UDim2.new(0, 6)
+    btnCorner.Parent = btn
+
+    return btn
+end
+
+local TargetBtn = createButton("TargetBtn", "à¸£à¸°à¸à¸à¸à¸²à¸¡à¸¥à¹à¸² (Auto Target): OFF", UDim2.new(0.075, 0, 0.25, 0), MainFrame)
+local BlockBtn = createButton("BlockBtn", "à¸­à¸­à¹à¸à¹à¸à¸¥à¹à¸­à¸ (Auto Block): OFF", UDim2.new(0.075, 0, 0.48, 0), MainFrame)
+local TargetStatus = Instance.new("TextLabel")
+TargetStatus.Size = UDim2.new(1, 0, 0, 20)
+TargetStatus.Position = UDim2.new(0, 0, 0.75, 0)
+TargetStatus.BackgroundTransparency = 1
+TargetStatus.Text = "à¹à¸à¹à¸²à¸«à¸¡à¸²à¸¢à¸à¸±à¸à¸à¸¸à¸à¸±à¸: à¹à¸¡à¹à¸à¸"
+TargetStatus.TextColor3 = Color3.fromRGB(180, 180, 180)
+TargetStatus.TextSize = 12
+TargetStatus.Font = Enum.Font.SourceSansItalic
+TargetStatus.Parent = MainFrame
+
+-- Helper Functions
+local function getRandomTarget()
+    local availableTargets = {}
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0 then
+            table.insert(availableTargets, player)
+        end
+    end
+    
+    if #availableTargets > 0 then
+        return availableTargets[math.random(1, #availableTargets)]
+    end
+    return nil
+end
+
+-- Function to simulate Block (F Key)
+local isBlocking = false
+local function triggerBlock()
+    if isBlocking then return end
+    isBlocking = true
+    
+    -- Press F key
+    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.F, false, game)
+    task.wait(0.6) -- Duration to hold block
+    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.F, false, game)
+    
+    isBlocking = false
+end
+
+-- Target Selection & Auto Switch Logic
+local function updateTargetLogic()
+    if not Settings.AutoTarget then return end
+    
+    -- Check if current target is invalid, dead, or left
+    if not Settings.SelectedTarget or 
+       not Settings.SelectedTarget.Parent or 
+       not Settings.SelectedTarget.Character or 
+       not Settings.SelectedTarget.Character:FindFirstChild("Humanoid") or 
+       Settings.SelectedTarget.Character.Humanoid.Health <= 0 then
+       
+        -- Pick a new target automatically
+        Settings.SelectedTarget = getRandomTarget()
+        if Settings.SelectedTarget then
+            TargetStatus.Text = "à¹à¸à¹à¸²à¸«à¸¡à¸²à¸¢à¸à¸±à¸à¸à¸¸à¸à¸±à¸: " .. Settings.SelectedTarget.Name
+        else
+            TargetStatus.Text = "à¹à¸à¹à¸²à¸«à¸¡à¸²à¸¢à¸à¸±à¸à¸à¸¸à¸à¸±à¸: à¹à¸¡à¹à¸à¸"
+        end
+    end
+
+    -- Teleport/Follow to Target
+    if Settings.SelectedTarget and Settings.SelectedTarget.Character and Settings.SelectedTarget.Character:FindFirstChild("HumanoidRootPart") then
+        local myChar = LocalPlayer.Character
+        if myChar and myChar:FindFirstChild("HumanoidRootPart") then
+            local targetHRP = Settings.SelectedTarget.Character.HumanoidRootPart
+            -- Move behind target
+            myChar.HumanoidRootPart.CFrame = targetHRP.CFrame * CFrame.new(0, 0, Settings.TargetDistance)
+        end
+    end
+end
+
+-- Auto Block Detection Logic
+local function checkIncomingSkills()
+    if not Settings.AutoBlock then return end
+    
+    local myChar = LocalPlayer.Character
+    if not myChar or not myChar:FindFirstChild("HumanoidRootPart") then return end
+    
+    local myPos = myChar.HumanoidRootPart.Position
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character then
+            local enemyChar = player.Character
+            local enemyHRP = enemyChar:FindFirstChild("HumanoidRootPart")
+            
+            if enemyHRP then
+                local dist = (enemyHRP.Position - myPos).Magnitude
+                if dist <= Settings.BlockRadius then
+                    -- Check if enemy is performing attack animation or has attack attributes
+                    local enemyHumanoid = enemyChar:FindFirstChildOfClass("Humanoid")
+                    if enemyHumanoid then
+                        -- Detect playing animations (Attacks/Skills)
+                        for _, track in ipairs(enemyHumanoid:GetPlayingAnimationTracks()) do
+                            if track.IsPlaying and (track.Animation.AnimationId:find("attack") or track.Animation.AnimationId:find("skill") or track.WeightCurrent > 0.5) then
+                                triggerBlock()
+                                break
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+-- Toggle Buttons Functionality
+TargetBtn.MouseButton1Click:Connect(function()
+    Settings.AutoTarget = not Settings.AutoTarget
+    if Settings.AutoTarget then
+        TargetBtn.Text = "à¸£à¸°à¸à¸à¸à¸²à¸¡à¸¥à¹à¸² (Auto Target): ON"
+        TargetBtn.TextColor3 = Color3.fromRGB(0, 255, 127)
+        Settings.SelectedTarget = getRandomTarget()
+        if Settings.SelectedTarget then
+            TargetStatus.Text = "à¹à¸à¹à¸²à¸«à¸¡à¸²à¸¢à¸à¸±à¸à¸à¸¸à¸à¸±à¸: " .. Settings.SelectedTarget.Name
+        end
+    else
+        TargetBtn.Text = "à¸£à¸°à¸à¸à¸à¸²à¸¡à¸¥à¹à¸² (Auto Target): OFF"
+        TargetBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+        Settings.SelectedTarget = nil
+        TargetStatus.Text = "à¹à¸à¹à¸²à¸«à¸¡à¸²à¸¢à¸à¸±à¸à¸à¸¸à¸à¸±à¸: à¸à¸´à¸à¹à¸à¹à¸à¸²à¸"
+    end
+end)
+
+BlockBtn.MouseButton1Click:Connect(function()
+    Settings.AutoBlock = not Settings.AutoBlock
+    if Settings.AutoBlock then
+        BlockBtn.Text = "à¸­à¸­à¹à¸à¹à¸à¸¥à¹à¸­à¸ (Auto Block): ON"
+        BlockBtn.TextColor3 = Color3.fromRGB(0, 255, 127)
+    else
+        BlockBtn.Text = "à¸­à¸­à¹à¸à¹à¸à¸¥à¹à¸­à¸ (Auto Block): OFF"
+        BlockBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+    end
+end)
+
+-- Main Loop
+RunService.Heartbeat:Connect(function()
+    updateTargetLogic()
+    checkIncomingSkills()
+end)
+
+print("[TSB Script] Loaded successfully!")
+
