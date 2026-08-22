@@ -1,0 +1,387 @@
+local Players = game:GetService("Players")
+local MarketplaceService = game:GetService("MarketplaceService")
+local TweenService = game:GetService("TweenService")
+
+local localPlayer = Players.LocalPlayer
+local playerGui = localPlayer:WaitForChild("PlayerGui")
+
+-- ลบ UI เก่าออกหากมีอยู่แล้ว
+if playerGui:FindFirstChild("CatalogSoundTrackerGui") then
+	playerGui.CatalogSoundTrackerGui:Destroy()
+end
+
+-- ----------------------------------------------------------------
+-- 1. การสร้าง UI หลัก (User Interface)
+-- ----------------------------------------------------------------
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "CatalogSoundTrackerGui"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = playerGui
+
+-- ปุ่มเปิด/ปิด ลอยด้านข้างหน้าจอ (Toggle Button)
+local toggleBtn = Instance.new("TextButton")
+toggleBtn.Name = "ToggleButton"
+toggleBtn.Size = UDim2.new(0, 45, 0, 45)
+toggleBtn.Position = UDim2.new(0, 15, 0.5, -22)
+toggleBtn.BackgroundColor3 = Color3.fromRGB(30, 32, 48)
+toggleBtn.BorderSizePixel = 0
+toggleBtn.Font = Enum.Font.GothamBold
+toggleBtn.Text = "🎵"
+toggleBtn.TextSize = 22
+toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleBtn.Active = true
+toggleBtn.Draggable = true
+toggleBtn.Parent = screenGui
+
+local toggleCorner = Instance.new("UICorner")
+toggleCorner.CornerRadius = UDim.new(0, 22)
+toggleCorner.Parent = toggleBtn
+
+local toggleStroke = Instance.new("UIStroke")
+toggleStroke.Color = Color3.fromRGB(80, 90, 130)
+toggleStroke.Thickness = 2
+toggleStroke.Parent = toggleBtn
+
+-- หน้าต่างหลัก (Main Frame)
+local mainFrame = Instance.new("Frame")
+mainFrame.Name = "MainFrame"
+mainFrame.Size = UDim2.new(0, 320, 0, 360)
+mainFrame.Position = UDim2.new(0, 70, 0.5, -180)
+mainFrame.BackgroundColor3 = Color3.fromRGB(22, 24, 34)
+mainFrame.BorderSizePixel = 0
+mainFrame.Active = true
+mainFrame.Draggable = true
+mainFrame.ClipsDescendants = true
+mainFrame.Parent = screenGui
+
+local mainCorner = Instance.new("UICorner")
+mainCorner.CornerRadius = UDim.new(0, 12)
+mainCorner.Parent = mainFrame
+
+local mainStroke = Instance.new("UIStroke")
+mainStroke.Color = Color3.fromRGB(50, 55, 75)
+mainStroke.Thickness = 2
+mainStroke.Parent = mainFrame
+
+-- แถบหัวข้อ (Header Bar)
+local headerBar = Instance.new("Frame")
+headerBar.Name = "HeaderBar"
+headerBar.Size = UDim2.new(1, 0, 0, 40)
+headerBar.BackgroundColor3 = Color3.fromRGB(28, 30, 44)
+headerBar.BorderSizePixel = 0
+headerBar.Parent = mainFrame
+
+local headerCorner = Instance.new("UICorner")
+headerCorner.CornerRadius = UDim.new(0, 12)
+headerCorner.Parent = headerBar
+
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Name = "TitleLabel"
+titleLabel.Size = UDim2.new(1, -80, 1, 0)
+titleLabel.Position = UDim2.new(0, 12, 0, 0)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Font = Enum.Font.GothamBold
+titleLabel.Text = "🎵 รายการเพลงในแมพ"
+titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+titleLabel.TextSize = 13
+titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+titleLabel.Parent = headerBar
+
+-- ปุ่มย่อ/ขยาย (Minimize Button)
+local minimizeBtn = Instance.new("TextButton")
+minimizeBtn.Name = "MinimizeButton"
+minimizeBtn.Size = UDim2.new(0, 28, 0, 28)
+minimizeBtn.Position = UDim2.new(1, -34, 0.5, -14)
+minimizeBtn.BackgroundColor3 = Color3.fromRGB(45, 48, 68)
+minimizeBtn.Font = Enum.Font.GothamBold
+minimizeBtn.Text = "−"
+minimizeBtn.TextColor3 = Color3.fromRGB(220, 220, 240)
+minimizeBtn.TextSize = 18
+minimizeBtn.Parent = headerBar
+
+local minCorner = Instance.new("UICorner")
+minCorner.CornerRadius = UDim.new(0, 6)
+minCorner.Parent = minimizeBtn
+
+-- ส่วนเนื้อหาภายใน (Content Container)
+local contentFrame = Instance.new("Frame")
+contentFrame.Name = "ContentFrame"
+contentFrame.Size = UDim2.new(1, 0, 1, -40)
+contentFrame.Position = UDim2.new(0, 0, 0, 40)
+contentFrame.BackgroundTransparency = 1
+contentFrame.Parent = mainFrame
+
+-- รายการเพลงแบบ Scrollable
+local scrollFrame = Instance.new("ScrollingFrame")
+scrollFrame.Name = "SoundList"
+scrollFrame.Size = UDim2.new(1, -16, 1, -12)
+scrollFrame.Position = UDim2.new(0, 8, 0, 6)
+scrollFrame.BackgroundTransparency = 1
+scrollFrame.BorderSizePixel = 0
+scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+scrollFrame.ScrollBarThickness = 4
+scrollFrame.ScrollBarImageColor3 = Color3.fromRGB(90, 100, 130)
+scrollFrame.Parent = contentFrame
+
+local listLayout = Instance.new("UIListLayout")
+listLayout.Padding = UDim.new(0, 8)
+listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+listLayout.Parent = scrollFrame
+
+listLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+	scrollFrame.CanvasSize = UDim2.new(0, 0, 0, listLayout.AbsoluteContentSize.Y + 10)
+end)
+
+-- ข้อความเมื่อยังไม่มีเพลง
+local emptyLabel = Instance.new("TextLabel")
+emptyLabel.Name = "EmptyLabel"
+emptyLabel.Size = UDim2.new(1, 0, 0, 80)
+emptyLabel.BackgroundTransparency = 1
+emptyLabel.Font = Enum.Font.GothamMedium
+emptyLabel.Text = "ยังไม่พบเพลงที่กำลังเล่น...\n(ลองเปิดเพลงในเกมดูครับ)"
+emptyLabel.TextColor3 = Color3.fromRGB(130, 135, 160)
+emptyLabel.TextSize = 12
+emptyLabel.Parent = scrollFrame
+
+-- แจ้งเตือนคัดลอกสำเร็จ (Toast Notification)
+local toastLabel = Instance.new("TextLabel")
+toastLabel.Name = "Toast"
+toastLabel.Size = UDim2.new(0, 200, 0, 32)
+toastLabel.Position = UDim2.new(0.5, -100, 0.85, 0)
+toastLabel.BackgroundColor3 = Color3.fromRGB(46, 180, 100)
+toastLabel.Font = Enum.Font.GothamBold
+toastLabel.Text = "คัดลอก ID เรียบร้อยแล้ว!"
+toastLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+toastLabel.TextSize = 12
+toastLabel.Visible = false
+toastLabel.ZIndex = 20
+toastLabel.Parent = screenGui
+
+local toastCorner = Instance.new("UICorner")
+toastCorner.CornerRadius = UDim.new(0, 8)
+toastCorner.Parent = toastLabel
+
+local function showToast(msg)
+	toastLabel.Text = msg
+	toastLabel.Visible = true
+	task.delay(1.8, function()
+		toastLabel.Visible = false
+	end)
+end
+
+-- ----------------------------------------------------------------
+-- 2. ระบบการย่อ / ขยาย และ เปิด / ปิด หน้าต่าง
+-- ----------------------------------------------------------------
+local isMinimized = false
+local fullHeight = 360
+local minHeight = 40
+
+local function toggleMinimize()
+	isMinimized = not isMinimized
+	if isMinimized then
+		mainFrame:TweenSize(UDim2.new(0, 320, 0, minHeight), Enum.EasingDirection.Out, Enum.EasingStyle.Quart, 0.25, true)
+		minimizeBtn.Text = "+"
+		contentFrame.Visible = false
+	else
+		contentFrame.Visible = true
+		mainFrame:TweenSize(UDim2.new(0, 320, 0, fullHeight), Enum.EasingDirection.Out, Enum.EasingStyle.Quart, 0.25, true)
+		minimizeBtn.Text = "−"
+	end
+end
+
+minimizeBtn.MouseButton1Click:Connect(toggleMinimize)
+
+toggleBtn.MouseButton1Click:Connect(function()
+	mainFrame.Visible = not mainFrame.Visible
+end)
+
+-- ----------------------------------------------------------------
+-- 3. ฟังก์ชันตรวจจับและคัดลอก ID เพลง
+-- ----------------------------------------------------------------
+local trackedSounds = {}
+local nameCache = {}
+
+-- ฟังก์ชันแยก ID ตัวเลขจาก URL
+local function extractAssetId(str)
+	if not str then return nil end
+	local id = tostring(str):match("%d+")
+	return id
+end
+
+-- ฟังก์ชันคัดลอก ID
+local function copyID(soundId, buttonObj)
+	if setclipboard then
+		setclipboard(soundId)
+		showToast("คัดลอก ID: " .. soundId .. " แล้ว!")
+	else
+		-- กรณีไม่รองรับ setclipboard ให้เปิดหน้าต่างสั้นๆ แสดง ID ให้คัดลอก
+		local input = Instance.new("TextBox")
+		input.Text = soundId
+		input.Size = buttonObj.Size
+		input.Position = buttonObj.Position
+		input.BackgroundColor3 = Color3.fromRGB(100, 110, 200)
+		input.TextColor3 = Color3.fromRGB(255, 255, 255)
+		input.Font = Enum.Font.GothamBold
+		input.TextSize = 11
+		input.ClearTextOnFocus = false
+		input.Parent = buttonObj.Parent
+		
+		input:CaptureFocus()
+		showToast("คัดลอกเลข ID ในช่องได้เลย")
+		
+		task.delay(4, function()
+			if input then input:Destroy() end
+		end)
+	end
+end
+
+-- ฟังก์ชันสร้าง Card แสดงผลเพลงในรายการ
+local function addSoundToUI(soundId, sourceName)
+	if not soundId or soundId == "" or soundId == "0" then return end
+	
+	-- ซ่อนข้อความเตือนเมื่อมีเพลงเล่น
+	emptyLabel.Visible = false
+
+	local cardName = "Card_" .. soundId
+	local existingCard = scrollFrame:FindFirstChild(cardName)
+
+	if existingCard then
+		-- อัปเดตเวลาล่าสุดหากเล่นซ้ำ
+		existingCard:SetAttribute("LastActive", os.time())
+		return
+	end
+
+	-- สร้างการ์ดเพลงใหม่
+	local card = Instance.new("Frame")
+	card.Name = cardName
+	card.Size = UDim2.new(1, 0, 0, 58)
+	card.BackgroundColor3 = Color3.fromRGB(32, 35, 50)
+	card.BorderSizePixel = 0
+	card:SetAttribute("LastActive", os.time())
+	card.Parent = scrollFrame
+
+	local cardCorner = Instance.new("UICorner")
+	cardCorner.CornerRadius = UDim.new(0, 8)
+	cardCorner.Parent = card
+
+	local cardStroke = Instance.new("UIStroke")
+	cardStroke.Color = Color3.fromRGB(50, 55, 75)
+	cardStroke.Thickness = 1
+	cardStroke.Parent = card
+
+	-- ข้อมูลเพลง
+	local infoLabel = Instance.new("TextLabel")
+	infoLabel.Size = UDim2.new(1, -95, 1, -8)
+	infoLabel.Position = UDim2.new(0, 10, 0, 4)
+	infoLabel.BackgroundTransparency = 1
+	infoLabel.Font = Enum.Font.Gotham
+	infoLabel.TextColor3 = Color3.fromRGB(230, 230, 240)
+	infoLabel.TextSize = 11
+	infoLabel.TextXAlignment = Enum.TextXAlignment.Left
+	infoLabel.TextYAlignment = Enum.TextYAlignment.Center
+	infoLabel.TextWrapped = true
+	infoLabel.Text = "🎵 กำลังดึงชื่อเพลง...\nID: " .. soundId
+	infoLabel.Parent = card
+
+	-- ปุ่มคัดลอก
+	local copyBtn = Instance.new("TextButton")
+	copyBtn.Name = "CopyBtn"
+	copyBtn.Size = UDim2.new(0, 75, 0, 32)
+	copyBtn.Position = UDim2.new(1, -82, 0.5, -16)
+	copyBtn.BackgroundColor3 = Color3.fromRGB(75, 95, 220)
+	copyBtn.Font = Enum.Font.GothamBold
+	copyBtn.Text = "คัดลอก ID"
+	copyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	copyBtn.TextSize = 11
+	copyBtn.Parent = card
+
+	local btnCorner = Instance.new("UICorner")
+	btnCorner.CornerRadius = UDim.new(0, 6)
+	btnCorner.Parent = copyBtn
+
+	copyBtn.MouseButton1Click:Connect(function()
+		copyID(soundId, copyBtn)
+	end)
+
+	-- ดึงชื่อเพลงจริงจาก Roblox Marketplace
+	task.spawn(function()
+		local soundTitle = "เพลง ID: " .. soundId
+		
+		if nameCache[soundId] then
+			soundTitle = nameCache[soundId]
+		else
+			local success, info = pcall(function()
+				return MarketplaceService:GetProductInfo(tonumber(soundId), Enum.InfoType.Asset)
+			end)
+			if success and info and info.Name then
+				soundTitle = info.Name
+				nameCache[soundId] = soundTitle
+			elseif sourceName and sourceName ~= "" then
+				soundTitle = sourceName
+			end
+		end
+
+		if card and card.Parent then
+			infoLabel.Text = "🎵 " .. soundTitle .. "\nID: " .. soundId
+		end
+	end)
+end
+
+-- ----------------------------------------------------------------
+-- 4. ระบบค้นหาและสแกน Sound / AudioPlayer ในเกม
+-- ----------------------------------------------------------------
+local function inspectInstance(inst)
+	-- รองรับทั้ง Sound แบบเดิม และ AudioPlayer แบบใหม่
+	if inst:IsA("Sound") then
+		local function checkSound()
+			local rawId = inst.SoundId
+			local soundId = extractAssetId(rawId)
+			
+			-- ตรวจสอบว่ากำลังเปิดอยู่ หรือเล่นผ่าน TimePosition
+			if soundId and (inst.IsPlaying or inst.TimePosition > 0) then
+				addSoundToUI(soundId, inst.Name)
+			end
+		end
+
+		checkSound()
+		inst:GetPropertyChangedSignal("IsPlaying"):Connect(checkSound)
+		inst:GetPropertyChangedSignal("SoundId"):Connect(checkSound)
+		
+	elseif inst:IsA("AudioPlayer") then
+		local function checkAudioPlayer()
+			local rawId = inst.AssetId
+			local soundId = extractAssetId(rawId)
+			if soundId and inst.IsPlaying then
+				addSoundToUI(soundId, inst.Name)
+			end
+		end
+
+		checkAudioPlayer()
+		inst:GetPropertyChangedSignal("IsPlaying"):Connect(checkAudioPlayer)
+		inst:GetPropertyChangedSignal("AssetId"):Connect(checkAudioPlayer)
+	end
+end
+
+-- สแกนทั่วทั้งเกม (Workspace, SoundService, Players, ฯลฯ)
+for _, item in ipairs(game:GetDescendants()) do
+	task.spawn(function()
+		inspectInstance(item)
+	end)
+end
+
+-- ดักจับออบเจกต์เพลงใหม่ๆ ที่เพิ่งถูกสร้าง
+game.DescendantAdded:Connect(function(item)
+	inspectInstance(item)
+end)
+
+-- ลูปสแกนซ้ำเป็นระยะ ป้องกันเพลงหลุดตรวจจับ
+task.spawn(function()
+	while task.wait(3) do
+		for _, item in ipairs(game:GetDescendants()) do
+			if (item:IsA("Sound") and item.IsPlaying) or (item:IsA("AudioPlayer") and item.IsPlaying) then
+				inspectInstance(item)
+			end
+		end
+	end
+end)
+
