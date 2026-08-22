@@ -1,0 +1,177 @@
+--[[
+    Muscle Legends Script (Sunday UI Library - Green Theme)
+    ฟังก์ชัน:
+    - ต่อยหินสีเขียว (ตัวอยู่นิ่ง)
+    - ยกกล้าม/ต่อยอัตโนมัติ
+    - รีเบิร์ธอัตโนมัติ
+    - ต่อยผู้เล่นทุกคนอัตโนมัติ
+--]]
+
+-- โหลด Sunday UI Library
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/bloodline-script/Sunday-UI/main/library.lua"))()
+
+-- สร้าง Window ในสไตล์ Sunday UI
+local Window = Library:CreateWindow({
+    Title = "Muscle Legends - Sunday Hub",
+    SubTitle = "สคริปต์ปั๊มกล้าม & ต่อยคนอัตโนมัติ",
+    Color = Color3.fromRGB(0, 255, 128), -- กำหนดโทนสีหลักเป็นสีเขียว
+    Theme = "Dark"
+})
+
+-- ตัวแปรสถานะฟังก์ชัน
+local autoRock = false
+local autoFarm = false
+local autoRebirth = false
+local autoKillAll = false
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+-- 1. ฟังก์ชัน: ต่อยหินสีเขียวระยะไกล (ตัวอยู่นิ่ง)
+task.spawn(function()
+    while task.wait(0.1) do
+        if autoRock then
+            pcall(function()
+                local rocks = workspace:GetChildren()
+                for _, obj in pairs(rocks) do
+                    if obj.Name:find("Rock") or obj:FindFirstChild("Rock") then
+                        local punchTool = LocalPlayer.Backpack:FindFirstChild("Punch") or LocalPlayer.Character:FindFirstChild("Punch")
+                        if punchTool then
+                            if punchTool.Parent ~= LocalPlayer.Character then
+                                punchTool.Parent = LocalPlayer.Character
+                            end
+                            punchTool:Activate()
+                            
+                            if obj:FindFirstChild("ClickDetector") then
+                                fireclickdetector(obj.ClickDetector)
+                            end
+                        end
+                    end
+                end
+            end)
+        end
+    end
+end)
+
+-- 2. ฟังก์ชัน: ยกกล้าม/ต่อยอัตโนมัติ (Auto Farm)
+task.spawn(function()
+    while task.wait(0.1) do
+        if autoFarm then
+            pcall(function()
+                local punchTool = LocalPlayer.Backpack:FindFirstChild("Punch") or LocalPlayer.Character:FindFirstChild("Punch")
+                local weightTool = LocalPlayer.Backpack:FindFirstChild("Weight") or LocalPlayer.Character:FindFirstChild("Weight")
+                
+                local tool = weightTool or punchTool
+                if tool then
+                    if tool.Parent ~= LocalPlayer.Character then
+                        tool.Parent = LocalPlayer.Character
+                    end
+                    tool:Activate()
+                end
+            end)
+        end
+    end
+end)
+
+-- 3. ฟังก์ชัน: รีเบิร์ธอัตโนมัติ (Auto Rebirth)
+task.spawn(function()
+    while task.wait(1) do
+        if autoRebirth then
+            pcall(function()
+                game:GetService("ReplicatedStorage").rEvents.rebirthRemote:InvokeServer()
+            end)
+        end
+    end
+end)
+
+-- 4. ฟังก์ชัน: ต่อยคนทุกคนในเซิร์ฟ (Auto Kill All)
+task.spawn(function()
+    while task.wait(0.15) do
+        if autoKillAll then
+            pcall(function()
+                local punchTool = LocalPlayer.Backpack:FindFirstChild("Punch") or LocalPlayer.Character:FindFirstChild("Punch")
+                if punchTool then
+                    if punchTool.Parent ~= LocalPlayer.Character then
+                        punchTool.Parent = LocalPlayer.Character
+                    end
+                    
+                    for _, player in pairs(Players:GetPlayers()) do
+                        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character:FindFirstChild("Humanoid").Health > 0 then
+                            if not autoKillAll then break end
+                            
+                            -- วาร์ปไปข้างหลังผู้เล่นอื่นแล้วชกทันที
+                            LocalPlayer.Character.HumanoidRootPart.CFrame = player.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 2.5)
+                            punchTool:Activate()
+                            task.wait(0.08)
+                        end
+                    end
+                end
+            end)
+        end
+    end
+end)
+
+-- สร้าง Tab สำหรับฟังก์ชันหลัก
+local MainTab = Window:CreateTab({
+    Name = "ฟังก์ชันหลัก",
+    Icon = "rbxassetid://4483363481"
+})
+
+-- สร้าง Section ฟังก์ชันปั๊มตัวละคร (ตกแต่งด้วยสีเขียว)
+local FarmSection = MainTab:CreateSection({
+    Name = "ระบบฟาร์มอัตโนมัติ (สีเขียว)"
+})
+
+FarmSection:CreateToggle({
+    Name = "ต่อยหินสีเขียวระยะไกล (ตัวอยู่นิ่ง)",
+    Default = false,
+    Color = Color3.fromRGB(0, 255, 128),
+    Callback = function(Value)
+        autoRock = Value
+    end
+})
+
+FarmSection:CreateToggle({
+    Name = "ยกกล้าม / ต่อยไม่อั้น (Auto Farm)",
+    Default = false,
+    Color = Color3.fromRGB(50, 220, 100),
+    Callback = function(Value)
+        autoFarm = Value
+    end
+})
+
+FarmSection:CreateToggle({
+    Name = "รีเบิร์ธอัตโนมัติ (Auto Rebirth)",
+    Default = false,
+    Color = Color3.fromRGB(0, 255, 150),
+    Callback = function(Value)
+        autoRebirth = Value
+    end
+})
+
+-- สร้าง Tab สำหรับ PVP / ต่อยคน
+local PvpTab = Window:CreateTab({
+    Name = "PVP & Trolling",
+    Icon = "rbxassetid://4483363481"
+})
+
+local PvpSection = PvpTab:CreateSection({
+    Name = "ระบบต่อยคน (สีเขียวเข้ม)"
+})
+
+PvpSection:CreateToggle({
+    Name = "ต่อยคนทุกคนในเซิร์ฟเวอร์ (Auto Kill All)",
+    Default = false,
+    Color = Color3.fromRGB(0, 230, 118),
+    Callback = function(Value)
+        autoKillAll = Value
+    end
+})
+
+-- แสดงการแจ้งเตือนเมื่อสคริปต์ทำงาน
+Library:Notification({
+    Title = "Sunday UI Loaded!",
+    Text = "สคริปต์สีเขียวธีม Sunday พร้อมใช้งานแล้ว",
+    Duration = 4
+})
+
