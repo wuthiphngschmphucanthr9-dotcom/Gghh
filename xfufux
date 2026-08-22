@@ -1,0 +1,166 @@
+--[[
+    Script Name: Sunday
+    Game: The Strongest Battlegrounds (สนามรบที่แข็งแกร่ง)
+    Features:
+      1. Auto Block (ออโต้บล็อกเมื่อมีศัตรูโจมตีในระยะ)
+      2. M1 x3 -> Uppercut -> Side-step Tech (ต่อย 3 ที + Uppercut + Side-step)
+      3. Low Graphics / FPS Boost (โหมดภาพกาก เพิ่ม FPS)
+      4. M1 x4 -> Auto Front Dash (ต่อย 4 ทีแล้วพุ่งแก้โล่)
+--]]
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local UserInputService = game:GetService("UserInputService")
+local Lighting = game:GetService("Lighting")
+
+local LocalPlayer = Players.LocalPlayer
+local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+LocalPlayer.CharacterAdded:Connect(function(char)
+    Character = char
+end)
+
+-- Settings / Configuration State
+local Config = {
+    AutoBlock = true,
+    AutoSideStepTech = true,
+    AutoDashGuardBreak = true,
+    LowGraphics = true,
+    BlockDistance = 15, -- ระยะตรวจจับการโจมตีเพื่อออโต้บล็อก
+}
+
+local M1Count = 0
+local LastM1Time = 0
+
+-- Function to simulate key press
+local function keyPress(keyCode)
+    VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
+    task.wait(0.05)
+    VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
+end
+
+-- 1. LOW GRAPHICS / FPS BOOST (ภาพกาก)
+local function ApplyLowGraphics()
+    if not Config.LowGraphics then return end
+    
+    -- ปรับเอฟเฟกต์แสง
+    Lighting.GlobalShadows = false
+    Lighting.FogEnd = 9e9
+    
+    for _, v in pairs(Lighting:GetChildren()) do
+        if v:IsA("PostEffect") or v:IsA("Atmosphere") then
+            v.Enabled = false
+        end
+    end
+    
+    -- ลดทอนรายละเอียด Object ใน Workspace
+    for _, v in pairs(game:GetDescendants()) do
+        if v:IsA("Part") or v:IsA("UnionOperation") or v:IsA("MeshPart") then
+            v.Material = Enum.Material.SmoothPlastic
+            v.Reflectance = 0
+        elseif v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Smoke") or v:IsA("Fire") then
+            v.Enabled = false
+        elseif v:IsA("Decal") or v:IsA("Texture") then
+            v:Destroy()
+        end
+    end
+end
+
+-- Run low graphics setup
+task.spawn(ApplyLowGraphics)
+
+-- 2. AUTO BLOCK SYSTEM (ระบบออโต้บล็อก)
+RunService.Heartbeat:Connect(function()
+    if not Config.AutoBlock or not Character or not Character:FindFirstChild("HumanoidRootPart") then return end
+    
+    local hrp = Character.HumanoidRootPart
+    local isThreatDetected = false
+
+    for _, enemy in pairs(Players:GetPlayers()) do
+        if enemy ~= LocalPlayer and enemy.Character and enemy.Character:FindFirstChild("HumanoidRootPart") then
+            local enemyHrp = enemy.Character.HumanoidRootPart
+            local distance = (hrp.Position - enemyHrp.Position).Magnitude
+            
+            if distance <= Config.BlockDistance then
+                -- ตรวจสอบว่าศัตรูกำลังออกท่าโจมตีหรือไม่
+                local enemyChar = enemy.Character
+                if enemyChar:FindFirstChild("Attacking") or enemyChar:FindFirstChildOfClass("AnimationTrack") then
+                    isThreatDetected = true
+                    break
+                end
+            end
+        end
+    end
+    
+    -- สั่งบล็อกอัตโนมัติ
+    if isThreatDetected then
+        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.F, false, game)
+    else
+        -- คายบล็อกเมื่อปลอดภัย
+        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.F, false, game)
+    end
+end)
+
+-- COMBAT TRACKER & TECH EXECUTION
+-- ตรวจจับการโจมตี M1 จากการคลิกเม้าส์ซ้าย
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        local currentTime = tick()
+        
+        -- Reset combo if time between hits is too long
+        if currentTime - LastM1Time > 1.2 then
+            M1Count = 0
+        end
+        
+        M1Count = M1Count + 1
+        LastM1Time = currentTime
+        
+        -- 3. TSB SIDE-STEP TECH (ต่อย 3 ที + Uppercut + Side-step)
+        if Config.AutoSideStepTech and M1Count == 3 then
+            task.spawn(function()
+                task.wait(0.18) -- จังหวะหลังต่อยเข็มที่ 3
+                
+                -- Up Cut (กด Space พร้อมโจมตี)
+                VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
+                task.wait(0.05)
+                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
+                
+                task.wait(0.15)
+                
+                -- Side-step Tech (สไลด์ข้างอัตโนมัติ)
+                VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Q, false, game)
+                VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.A, false, game) -- สไลด์ไปทางซ้าย (เปลี่ยนเป็น D ได้)
+                
+                task.wait(0.1)
+                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Q, false, game)
+                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.A, false, game)
+            end)
+        end
+        
+        -- 4. AUTO DASH COUNTER-GUARD (ต่อย 4 ทีพุ่งแก้โล่)
+        if Config.AutoDashGuardBreak and M1Count == 4 then
+            task.spawn(function()
+                task.wait(0.1)
+                -- พุ่งไปข้างหน้า (Dash Forward)
+                VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Q, false, game)
+                VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.W, false, game)
+                
+                task.wait(0.08)
+                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Q, false, game)
+                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.W, false, game)
+                
+                -- รีเซ็ต Combo
+                M1Count = 0
+            end)
+        end
+    end
+end)
+
+-- Notification
+print("==================================")
+print(" Script: [ Sunday ] Loaded Successfully! ")
+print(" Status: Active ")
+print("==================================")
+
