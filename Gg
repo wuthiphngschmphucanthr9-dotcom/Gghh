@@ -1,0 +1,209 @@
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local Window = Rayfield:CreateWindow({
+   Name = "สนามรบที่แข็งแกร่ง | Target Script",
+   LoadingTitle = "กำลังโหลดสคริปต์...",
+   LoadingSubtitle = "by Gemini Assistant",
+   ConfigurationSaving = {
+      Enabled = false,
+   },
+   Discord = {
+      Enabled = false,
+   },
+   KeySystem = false
+})
+
+local MainTab = Window:CreateTab("ฟังก์ชันหลัก", 4483362458) -- Icon ID
+
+-- Variables
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+local SelectedPlayerName = ""
+local TargetTeleportEnabled = false
+local AutoLockEnabled = false
+local DistanceBehind = 3 -- ระยะห่างด้านหลังผู้เล่น (หน่วย Studs)
+
+local TeleportConnection = nil
+local LockConnection = nil
+
+-- ฟังก์ชันดึงรายชื่อผู้เล่นในเซิร์ฟเวอร์ (ไม่รวมตัวเอง)
+local function GetPlayerList()
+    local list = {}
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            table.insert(list, player.Name)
+        end
+    end
+    if #list == 0 then
+        table.insert(list, "ไม่มีผู้เล่นอื่นในเซิร์ฟเวอร์")
+    end
+    return list
+end
+
+-- UI Controls
+
+-- Dropdown เลือกผู้เล่น
+local PlayerDropdown = MainTab:CreateDropdown({
+   Name = "เลือกผู้เล่นเป้าหมาย",
+   Options = GetPlayerList(),
+   CurrentOption = {""},
+   MultipleOptions = false,
+   Flag = "TargetDropdown",
+   Callback = function(Option)
+      SelectedPlayerName = Option[1]
+      Rayfield:Notify({
+         Title = "เลือกเป้าหมายแล้ว",
+         Content = "เป้าหมายปัจจุบัน: " .. tostring(SelectedPlayerName),
+         Duration = 2.5,
+         Image = 4483362458,
+      })
+   end,
+})
+
+-- ปุ่มรีเฟรชรายชื่อผู้เล่น
+MainTab:CreateButton({
+   Name = "รีเฟรชรายชื่อผู้เล่น",
+   Callback = function()
+      PlayerDropdown:Refresh(GetPlayerList())
+   end,
+})
+
+-- Toggle วาร์ปติดหลังผู้เล่น
+local TeleportToggle = MainTab:CreateToggle({
+   Name = "วาร์ปไปอยู่ข้างหลังเป้าหมาย (Auto Follow)",
+   CurrentValue = false,
+   Flag = "TeleportToggle",
+   Callback = function(Value)
+      TargetTeleportEnabled = Value
+      
+      if TargetTeleportEnabled then
+         if SelectedPlayerName == "" or SelectedPlayerName == "ไม่มีผู้เล่นอื่นในเซิร์ฟเวอร์" then
+            Rayfield:Notify({
+               Title = "แจ้งเตือน",
+               Content = "กรุณาเลือกผู้เล่นเป้าหมายก่อนเปิดใช้งาน!",
+               Duration = 3,
+               Image = 4483362458,
+            })
+            return
+         end
+
+         -- เริ่ม Loop วาร์ปไปข้างหลัง
+         TeleportConnection = RunService.Heartbeat:Connect(function()
+            local targetPlayer = Players:FindFirstChild(SelectedPlayerName)
+            
+            -- ตรวจสอบว่าเป้าหมายยังมีชีวิตอยู่และอยู่ในเกมหรือไม่
+            if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") and targetPlayer.Character:FindFirstChildOfClass("Humanoid") then
+               local targetHumanoid = targetPlayer.Character:FindFirstChildOfClass("Humanoid")
+               local myCharacter = LocalPlayer.Character
+               
+               if targetHumanoid.Health > 0 and myCharacter and myCharacter:FindFirstChild("HumanoidRootPart") then
+                  local myHrp = myCharacter.HumanoidRootPart
+                  local targetHrp = targetPlayer.Character.HumanoidRootPart
+                  
+                  -- คำนวณตำแหน่งด้านหลังเป้าหมาย
+                  local behindCFrame = targetHrp.CFrame * CFrame.new(0, 0, DistanceBehind)
+                  
+                  -- วาร์ปตำแหน่งและหันหน้าไปทางเดียวกับเป้าหมาย
+                  myHrp.CFrame = CFrame.new(behindCFrame.Position, targetHrp.Position + targetHrp.CFrame.LookVector * 10)
+               else
+                  -- ถ้าเป้าหมายตาย หรือตัวเราตาย ให้หยุดการทำงานอัตโนมัติ
+                  TargetTeleportEnabled = false
+                  if TeleportConnection then TeleportConnection:Disconnect() end
+                  Rayfield:Notify({
+                     Title = "ระบบหยุดทำงาน",
+                     Content = "เป้าหมายตายหรือไม่อยู่ในสภาพพร้อม",
+                     Duration = 3,
+                     Image = 4483362458,
+                  })
+               end
+            else
+               -- ถ้าเป้าหมายออกจากเกม
+               TargetTeleportEnabled = false
+               if TeleportConnection then TeleportConnection:Disconnect() end
+               Rayfield:Notify({
+                  Title = "ระบบหยุดทำงาน",
+                  Content = "ผู้เล่นเป้าหมายออกจากเกมแล้ว",
+                  Duration = 3,
+                  Image = 4483362458,
+               })
+            end
+         end)
+      else
+         -- ปิดการทำงาน
+         if TeleportConnection then
+            TeleportConnection:Disconnect()
+            TeleportConnection = nil
+         end
+      end
+   end,
+})
+
+-- Toggle ระบบ Auto Lock กล้องไปที่เป้าหมาย
+MainTab:CreateToggle({
+   Name = "Auto Camera Lock (หมุนกล้องตามเป้าหมาย)",
+   CurrentValue = false,
+   Flag = "AutoLockToggle",
+   Callback = function(Value)
+      AutoLockEnabled = Value
+      
+      if AutoLockEnabled then
+         LockConnection = RunService.RenderStepped:Connect(function()
+            if SelectedPlayerName ~= "" then
+               local targetPlayer = Players:FindFirstChild(SelectedPlayerName)
+               if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                  local targetHrp = targetPlayer.Character.HumanoidRootPart
+                  Camera.CFrame = CFrame.new(Camera.CFrame.Position, targetHrp.Position)
+               end
+            end
+         end)
+      else
+         if LockConnection then
+            LockConnection:Disconnect()
+            LockConnection = nil
+         end
+      end
+   end,
+})
+
+-- Slider ปรับระยะห่างด้านหลัง
+MainTab:CreateSlider({
+   Name = "ระยะห่างด้านหลัง (Studs)",
+   Range = {1, 10},
+   Increment = 0.5,
+   Suffix = "Studs",
+   CurrentValue = 3,
+   Flag = "DistanceSlider",
+   Callback = function(Value)
+      DistanceBehind = Value
+   end,
+})
+
+-- อัปเดตรายชื่อเมื่อมีผู้เล่น เข้า/ออก เกม
+Players.PlayerAdded:Connect(function()
+   PlayerDropdown:Refresh(GetPlayerList())
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+   PlayerDropdown:Refresh(GetPlayerList())
+   if player.Name == SelectedPlayerName then
+      SelectedPlayerName = ""
+      if TeleportConnection then TeleportConnection:Disconnect() end
+      Rayfield:Notify({
+         Title = "แจ้งเตือน",
+         Content = "ผู้เล่นเป้าหมายออกจากเกมแล้ว",
+         Duration = 3,
+         Image = 4483362458,
+      })
+   end
+end)
+
+Rayfield:Notify({
+   Title = "สคริปต์พร้อมใช้งาน!",
+   Content = "เลือกเป้าหมายแล้วกดเปิดใช้งานได้เลย",
+   Duration = 4,
+   Image = 4483362458,
+})
+
